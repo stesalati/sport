@@ -6,16 +6,15 @@
 # Use "%matplotlib qt" to plot in a different window
 
 import numpy as np
-from scipy import signal, misc, fftpack
+from scipy import signal, fftpack
 from scipy.misc import imread
-import matplotlib
 import matplotlib.pyplot as plt, mpld3
 from matplotlib import gridspec
 import gpxpy
 import datetime
-from osmapi import OsmApi
+# from osmapi import OsmApi
 from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
-from urllib2 import urlopen
+# from urllib2 import urlopen
 import urllib2
 from pylab import imshow, imread, show
 import mpld3
@@ -167,22 +166,25 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon):
 #    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
 #    ax1.add_artist(at)
     
+    # Fake subplot
     points = ax1.scatter(X[0], X[2])
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
     ax1.yaxis.set_major_formatter(plt.NullFormatter())
     
-    # Coordinates
+    # Map with route
     lat_origin = np.min(lat)
     lon_origin = np.min(lon)
     lat_span = np.max(lat) - np.min(lat)
     lon_span = np.max(lon) - np.min(lon)
-    zoom_level = 13
+    zoom_level = 14
     
-    a = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
-    fig.patch.set_facecolor('white')
+    a, margin_coords = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
+    #fig.patch.set_facecolor('white')
     points = ax2.plot(X[2], X[3], color = '0.5')
     img = np.asarray(a)
-    plt.imshow(a, zorder=0, extent=[np.min(lon), np.max(lon), np.min(lat), np.max(lat)])
+    # Extent simply associates values, in this case longitude and latitude, to the
+    # map's corners.
+    ax2.imshow(img, extent=[margin_coords[2], margin_coords[3], margin_coords[0], margin_coords[1]], zorder=0, origin="lower")
     points = ax2.scatter(X[2], X[3], s=4)
     ax2.set_xlim(np.min(lon), np.max(lon))
     ax2.set_ylim(np.min(lat), np.max(lat))    
@@ -301,9 +303,26 @@ def num2deg(xtile, ytile, zoom):
   return (lat_deg, lon_deg)
 
 def getImageCluster(lat_deg, lon_deg, delta_lat,  delta_long, zoom):
+    print "\nDownloading tiles from OpenStreetMaps"
     smurl = r"http://a.tile.openstreetmap.org/{0}/{1}/{2}.png"
-    xmin, ymax =deg2num(lat_deg, lon_deg, zoom)
-    xmax, ymin =deg2num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
+    
+    # These are the tiles to download
+    xmin, ymax = deg2num(lat_deg, lon_deg, zoom)
+    xmax, ymin = deg2num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
+    print "Tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
+    
+    # Margin coordinates of the tiles that were downloaded (adding 1 to the max
+    # tiles as apparently the coordinates returned by num2deg refer to the
+    # origin of the tile)
+    lat_min, lon_min = num2deg(xmin, ymin, zoom)
+    lat_max, lon_max = num2deg(xmax + 1, ymax + 1, zoom)
+    lat_min_actual = np.min((lat_min, lat_max))
+    lat_max_actual = np.max((lat_min, lat_max))
+    lon_min_actual = np.min((lon_min, lon_max))
+    lon_max_actual = np.max((lon_min, lon_max))
+    margin_coords = (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
+    print "User requested area >>>>>>>>>>>>> lat: %f - %f, lon: %f - %f" % (lat_deg, lat_deg + delta_lat, lon_deg, lon_deg + delta_long)
+    print "Returned area (must be wider) >>> lat: %f - %f, lon: %f - %f" % (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
 
     Cluster = Image.new('RGB',((xmax-xmin+1)*256-1,(ymax-ymin+1)*256-1) ) 
     for xtile in range(xmin, xmax+1):
@@ -320,10 +339,10 @@ def getImageCluster(lat_deg, lon_deg, delta_lat,  delta_long, zoom):
                 tile = Image.open(StringIO.StringIO(imgstr))
                 Cluster.paste(tile, box=((xtile-xmin)*256 ,  (ytile-ymin)*255))
             except: 
-                print("Couldn't download image")
+                print("Tile download failed for some reason.")
                 tile = None
 
-    return Cluster
+    return Cluster, margin_coords
 
 ###############################################################################
 # http://www.trackprofiler.com/gpxpy/index.html
@@ -413,7 +432,7 @@ gradient_filtered = dh_filtered/ds
 
 
 n = 10
-fig = plt.figure(n)
+#fig = plt.figure(n)
 #ax1 = fig.add_subplot(4, 1, 1)
 #ax2 = fig.add_subplot(4, 1, 2, sharex=ax1)
 #ax3 = fig.add_subplot(4, 1, 3, sharex=ax1)
@@ -440,58 +459,49 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 
 
 
-
 #
-#
-#
+#fig.subplots_adjust(hspace=0.1, wspace=0.1)
+#gs = gridspec.GridSpec(3, 1, height_ratios=[2, 0.001, 5]) 
+#ax0 = plt.subplot(gs[0])
+#ax1 = plt.subplot(gs[1])
+#ax2 = plt.subplot(gs[2])
 #
 #lat_origin = np.min(lat_cleaned)
 #lon_origin = np.min(lon_cleaned)
 #lat_span = np.max(lat_cleaned) - np.min(lat_cleaned)
 #lon_span = np.max(lon_cleaned) - np.min(lon_cleaned)
-#zoom_level = 13
+#zoom_level = 14
 #
-#a = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
-#fig.patch.set_facecolor('white')
-#a1 = np.asarray(a)
-#a2 = a1.T
-#plt.imshow(a2)
-#plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#a, margin_coords = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
+#points = ax2.plot(lon_cleaned, lat_cleaned)
+#img = np.asarray(a)
+## Extent simply associates values, in this case longitude and latitude, to the
+## map's corners.
+#ax2.imshow(img, zorder=0, extent=[margin_coords[2], margin_coords[3], margin_coords[0], margin_coords[1]], origin="upper")
 #
-## open an openstreetmap export png file via http
-#proxy = urllib2.ProxyHandler({'http': 'salatis:Alzalarosa01@userproxy.tmg.local:8080'})
-#opener = urllib2.build_opener(proxy)
-#urllib2.install_opener(opener)
-#url = urlopen('http://parent.tile.openstreetmap.org/cgi-bin/export?'
-#              'bbox={lat1:.2f},{lon1:.2f},{lat2:.2f},{lon2:.2f}&'
-#              'scale={scale:d}&format=png'.format(lat1=lat[0],
-#              lat2=lat[1],
-#              lon1=lon[0],
-#              lon2=lon[1],
-#              scale=scale))
 #
-## plot the map
-#imshow(imread(url), extent=lat+lon, aspect='equal')
-#
-## plot other data here
-#show()
+#points = ax2.scatter(lon_cleaned, lat_cleaned, s=4)
+#ax2.set_xlim(np.min(lon), np.max(lon))
+#ax2.set_ylim(np.min(lat), np.max(lat))    
+#ax2.set_xlabel("Lat")
+#ax2.set_ylabel("Lon")
+#ax2.grid(True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #plt.hold(True)
@@ -500,48 +510,10 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 #
 #mplleaflet.show()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-#lon = [49.5,50.35]
-#lat = [18.6,20.2]
-#scale = 700000
-#
-## open an openstreetmap export png file via http
-#url = urlopen('http://parent.tile.openstreetmap.org/cgi-bin/export?'
-#              'bbox={lat1:.2f},{lon1:.2f},{lat2:.2f},{lon2:.2f}&'
-#              'scale={scale:d}&format=png'.format(lat1=lat[0],
-#              lat2=lat[1],
-#              lon1=lon[0],
-#              lon2=lon[1],
-#              scale=scale))
-#
-#url = urlopen("https://api.mapbox.com/styles/v1/mapbox/streets-v8/static/-122.4241,37.78,14.25,0,60/600x600?access_token=pk.eyJ1Ijoic3Rlc2FsYXRpIiwiYSI6ImNpejlxY3YyOTAyYmkyd21wc3BuaDUzbmsifQ.CsjWxwu7arzlJxPSpMR2fg")
-#
-#m = imread(url)
-#imshow(m, extent=lat+lon, aspect='equal')
-#show()
-
-
 #http://api.openstreetmap.org/api/0.6/map?bbox=11.54,48.14,11.543,48.145&scale=700000&format=png
-              
-              
+
 #https://api.mapbox.com/styles/v1/mapbox/streets-v8/static/-122.4241,37.78,14.25,0,60/600x600?access_token=pk.eyJ1Ijoic3Rlc2FsYXRpIiwiYSI6ImNpejlxY3YyOTAyYmkyd21wc3BuaDUzbmsifQ.CsjWxwu7arzlJxPSpMR2fg
-#
-#lon = [49.5,50.35]
-#lat = [18.6,20.2]
-#scale = 700000
-#
+
 #print "Downloading map... "
 #tries = 0
 #url = None
@@ -580,7 +552,6 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 #
 #show()
 
-
 #MyApi = OsmApi(
 #            api = "http://www.openstreetmap.org",
 #            username = u"stef.salati@gmail.com",
@@ -595,9 +566,7 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 # u'version': 1, u'user': u'Mede',
 # u'lat': 59.9503044, u'tag': {}, u'id': 123}
 #
-#print node 
- 
-
+#print node
 
 #def Compute(lat, lon, h, t):
 #    # Differentials
@@ -612,9 +581,6 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 #    # Elevation gradient between consecutive points
 #    gradient = dh/ds
 #    return dh, dt, ds, s, speed_h, speed_v, gradient
-
-
-
 
 #MyApi = OsmApi(username = u"EtienneChove", password = u"*******")
 #MyApi.ChangesetCreate({u"comment": u"My first test"})
