@@ -7,7 +7,7 @@
 
 import numpy as np
 from scipy import signal, fftpack
-from scipy.misc import imread
+# from scipy.misc import imread
 import matplotlib.pyplot as plt, mpld3
 from matplotlib import gridspec
 import gpxpy
@@ -16,10 +16,14 @@ import datetime
 from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
 # from urllib2 import urlopen
 import urllib2
-from pylab import imshow, imread, show
-import mpld3
-from mpld3 import plugins, utils
+# from pylab import imshow, imread, show
+# import mpld3
+from mpld3 import plugins#, utils
 import mplleaflet
+# import urllib
+# import scipy.misc
+import os.path
+
 
 import math
 import StringIO
@@ -141,9 +145,9 @@ def PlotSamplingTimeAndDistance(n, dt, ds):
     plt.xlabel("Sample")
     plt.grid()
     
-def MapInteractivePlot(fig, s, h, dh, lat, lon):
+def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, use_proxy, proxy_data, verbose):
     fig.subplots_adjust(hspace=0.1, wspace=0.1)
-    gs = gridspec.GridSpec(3, 1, height_ratios=[2, 0.001, 5]) 
+    gs = gridspec.GridSpec(1, 3, width_ratios=[5, 0.001, 5])
     ax0 = plt.subplot(gs[0])
     ax1 = plt.subplot(gs[1])
     ax2 = plt.subplot(gs[2])
@@ -156,15 +160,15 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon):
     ax0.set_xlabel("Distance (m)")
     ax0.grid(True)
     ax0.set_xlim(np.min(s), np.max(s))
-    #ax0.set_ylim(np.min(h), np.max(h))
+    ax0.set_ylim(0, np.max(h) + 100)
     
     # Total ascent/descent
-#    at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh_filtered, 1), TotalAscentDescent(dh_filtered, -1)),
-#                      prop=dict(size=12), frameon=True,
-#                      loc=2,
-#                      )
-#    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-#    ax1.add_artist(at)
+    #at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh_filtered, 1), TotalAscentDescent(dh_filtered, -1)),
+    #                  prop=dict(size=12), frameon=True,
+    #                  loc=2,
+    #                  )
+    #at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+    #ax1.add_artist(at)
     
     # Fake subplot
     points = ax1.scatter(X[0], X[2])
@@ -172,22 +176,21 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon):
     ax1.yaxis.set_major_formatter(plt.NullFormatter())
     
     # Map with route
-    lat_origin = np.min(lat)
-    lon_origin = np.min(lon)
-    lat_span = np.max(lat) - np.min(lat)
-    lon_span = np.max(lon) - np.min(lon)
-    zoom_level = 14
-    
-    a, margin_coords = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
-    #fig.patch.set_facecolor('white')
+    margin = np.max((np.max(lat) - np.min(lat), np.max(lon) - np.min(lon))) * margin_percentage
+    lat_origin = np.min(lat) - margin
+    lon_origin = np.min(lon) - margin
+    lat_span = np.max(lat) - np.min(lat) + 2 * margin
+    lon_span = np.max(lon) - np.min(lon) + 2 * margin
+    a, tiles_edges_coords = GetMapImageCluster(use_proxy, proxy_data, lat_origin, lon_origin, lat_span, lon_span, zoom_level, verbose)
+    fig.patch.set_facecolor('white')
     points = ax2.plot(X[2], X[3], color = '0.5')
     img = np.asarray(a)
-    # Extent simply associates values, in this case longitude and latitude, to the
-    # map's corners.
-    ax2.imshow(img, extent=[margin_coords[2], margin_coords[3], margin_coords[0], margin_coords[1]], zorder=0, origin="lower")
+    # Extent simply associates values, in this case longitude and latitude, to
+    #	the map's corners.
+    ax2.imshow(img, extent=[tiles_edges_coords[2], tiles_edges_coords[3], tiles_edges_coords[0], tiles_edges_coords[1]], zorder=0, origin="lower")
     points = ax2.scatter(X[2], X[3], s=4)
-    ax2.set_xlim(np.min(lon), np.max(lon))
-    ax2.set_ylim(np.min(lat), np.max(lat))    
+    ax2.set_xlim(lon_origin, lon_origin + lon_span)
+    ax2.set_ylim(lat_origin, lat_origin + lat_span)    
     ax2.set_xlabel("Lat")
     ax2.set_ylabel("Lon")
     ax2.grid(True)
@@ -288,66 +291,98 @@ def PlotFilter(x):
     plt.xlabel("Normalized frequency [cycles per sample]")
     plt.grid()
     
-def deg2num(lat_deg, lon_deg, zoom):
+def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
   lat_rad = math.radians(lat_deg)
   n = 2.0 ** zoom
   xtile = int((lon_deg + 180.0) / 360.0 * n)
   ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
   return (xtile, ytile)
 
-def num2deg(xtile, ytile, zoom):
+def MapTilesNum2Deg(xtile, ytile, zoom):
   n = 2.0 ** zoom
   lon_deg = xtile / n * 360.0 - 180.0
   lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * ytile / n)))
   lat_deg = math.degrees(lat_rad)
   return (lat_deg, lon_deg)
 
-def getImageCluster(lat_deg, lon_deg, delta_lat,  delta_long, zoom):
-    print "\nDownloading tiles from OpenStreetMaps"
+def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta_long, zoom, verbose):
+    # Proxy setup with urllib
+    # proxies = {'http': 'salatis:Alzalarosa01@userproxy.tmg.local:8080'}
+    
+    # Proxy setup with urllib2
+    if use_proxy:
+        proxy = urllib2.ProxyHandler({'http': proxy_data})
+        opener = urllib2.build_opener(proxy)
+        urllib2.install_opener(opener)
+    
+    # Local storage folder
+    image_storage_path = 'map_tiles/'
+    savename = r"{0}_{1}_{2}.png"
+    
+    # Request url
     smurl = r"http://a.tile.openstreetmap.org/{0}/{1}/{2}.png"
     
     # These are the tiles to download
-    xmin, ymax = deg2num(lat_deg, lon_deg, zoom)
-    xmax, ymin = deg2num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
-    print "Tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
+    xmin, ymax = MapTilesDeg2Num(lat_deg, lon_deg, zoom)
+    xmax, ymin = MapTilesDeg2Num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
+    if verbose:
+        print "Tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
     
     # Margin coordinates of the tiles that were downloaded (adding 1 to the max
-    # tiles as apparently the coordinates returned by num2deg refer to the
-    # origin of the tile)
-    lat_min, lon_min = num2deg(xmin, ymin, zoom)
-    lat_max, lon_max = num2deg(xmax + 1, ymax + 1, zoom)
+    # tiles as apparently the coordinates returned by MapTilesNum2Deg refer to
+    # the origin of the tile)
+    lat_min, lon_min = MapTilesNum2Deg(xmin, ymin, zoom)
+    lat_max, lon_max = MapTilesNum2Deg(xmax + 1, ymax + 1, zoom)
     lat_min_actual = np.min((lat_min, lat_max))
     lat_max_actual = np.max((lat_min, lat_max))
     lon_min_actual = np.min((lon_min, lon_max))
     lon_max_actual = np.max((lon_min, lon_max))
-    margin_coords = (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
-    print "User requested area >>>>>>>>>>>>> lat: %f - %f, lon: %f - %f" % (lat_deg, lat_deg + delta_lat, lon_deg, lon_deg + delta_long)
-    print "Returned area (must be wider) >>> lat: %f - %f, lon: %f - %f" % (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
-
-    Cluster = Image.new('RGB',((xmax-xmin+1)*256-1,(ymax-ymin+1)*256-1) ) 
+    tiles_edges_coords = (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
+    if verbose:
+        print "User requested area >>>>>>>>>>>>> lat: %f - %f, lon: %f - %f" % (lat_deg, lat_deg + delta_lat, lon_deg, lon_deg + delta_long)
+        print "Returned area (must be wider) >>> lat: %f - %f, lon: %f - %f" % (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
+    
+    # Populate the desired map with tiles
+    Cluster = Image.new('RGB',((xmax-xmin+1)*256-1, (ymax-ymin+1)*256-1))
     for xtile in range(xmin, xmax+1):
         for ytile in range(ymin,  ymax+1):
             try:
-                imgurl=smurl.format(zoom, xtile, ytile)
-                print("Opening: " + imgurl)
-                
-                proxy = urllib2.ProxyHandler({'http': 'salatis:Alzalarosa01@userproxy.tmg.local:8080'})
-                opener = urllib2.build_opener(proxy)
-                urllib2.install_opener(opener)
-                
-                imgstr = urllib2.urlopen(imgurl).read()
-                tile = Image.open(StringIO.StringIO(imgstr))
+                # Check if the tile is already present locally
+                if os.path.isfile(image_storage_path + savename.format(zoom, xtile, ytile)):
+                    tile = Image.open(image_storage_path + savename.format(zoom, xtile, ytile))
+                else:
+                    # Download from the Internet and save it locally for future
+                    # use
+                    imgurl = smurl.format(zoom, xtile, ytile)
+                    print("Tile not found locally, have to download it from: " + imgurl)
+                    imgstr = urllib2.urlopen(imgurl).read()
+                    tile = Image.open(StringIO.StringIO(imgstr))
+                    with open(image_storage_path + savename.format(zoom, xtile, ytile), 'wb') as f:
+                        f.write(imgstr)
+                        f.close()
+                # Append it to the rest of the cluster
                 Cluster.paste(tile, box=((xtile-xmin)*256 ,  (ytile-ymin)*255))
             except: 
-                print("Tile download failed for some reason.")
+                print("Tile loading (either from local repository or the Internet failed.")
                 tile = None
-
-    return Cluster, margin_coords
+                
+    return Cluster, tiles_edges_coords
 
 ###############################################################################
 # http://www.trackprofiler.com/gpxpy/index.html
+print "    _______  _______  ________      __    __  __  ________"
+print "   / _____/ / ___  / / ______/      | |  / / / / / ______/"
+print "  / / ___  / /__/ / / /_____  _____ | | / / / / / /_____  "
+print " / / /  / / ____ / /_____  / /____/ | |/ / / / /_____  /  "
+print "/ /__/ / / /      ______/ /         |   / / / ______/ /   "
+print "\_____/ /_/      /_______/          |__/ /_/ /_______/    "
+print ""
 
-print "VISUALIZZATORE ALTITUDINE"
+# Control constants
+FILENAME = "original.gpx"
+VERBOSE = False
+
+# Constants
 LIMIT_POS_SPEED_H = 12.0
 LIMIT_NEG_SPEED_H = -12.0
 LIMIT_POS_SPEED_V = 3.0
@@ -355,8 +390,12 @@ LIMIT_NEG_SPEED_V = -3.0
 LIMIT_POS_GRADIENT = 4.0
 LIMIT_NEG_GRADIENT = -4.0
 
-filename = "original.gpx"
-lat, lon, h, t = LoadGPX(filename)
+# Proxy setup
+USE_PROXY = True
+PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
+
+# Loading .gpx file
+lat, lon, h, t = LoadGPX(FILENAME)
 s = np.cumsum(HaversineDistance(lat, lon))
 
 # Getting rid of outliers. If they're left to filtering they alter the results quite significantly.
@@ -393,8 +432,9 @@ for i in range(1,len(h)):
         gradient_list.append(gradient)
     else:
         # ...the the point is invalid
-        print "Point %d is INVALID, compared with %d" % (i, i-k)
-        print "  -> DIFFERENTIALS speed_h: %2.2f  speed_v: %2.2f  gradient: %2.2f" % (speed_h, speed_v, gradient)
+        if VERBOSE:
+            print "Point %d is INVALID, compared with %d" % (i, i-k)
+            print "  -> DIFFERENTIALS speed_h: %2.2f  speed_v: %2.2f  gradient: %2.2f" % (speed_h, speed_v, gradient)
 
 # plt.plot(s, h[1:len(h)], 'k-', s_cleaned, h_cleaned[1:len(h_cleaned)], 'r-')
 
@@ -450,59 +490,16 @@ n = 10
 #                           h_filtered, dh_filtered,
 #                           speed_h, speed_v_filtered, gradient_filtered,
 #                           lat_cleaned, lon_cleaned)
-#
 
-fig = plt.figure(figsize=(12, 12))
-MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cleaned)
-
-
-
+#fig = plt.figure(figsize=(20, 8))
+#ZOOM_LEVEL = 14
+#MARGIN_PERCENTAGE = 0.1
+#MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cleaned, ZOOM_LEVEL, MARGIN_PERCENTAGE, USE_PROXY, PROXY_DATA, VERBOSE)
 
 
-#
-#fig.subplots_adjust(hspace=0.1, wspace=0.1)
-#gs = gridspec.GridSpec(3, 1, height_ratios=[2, 0.001, 5]) 
-#ax0 = plt.subplot(gs[0])
-#ax1 = plt.subplot(gs[1])
-#ax2 = plt.subplot(gs[2])
-#
-#lat_origin = np.min(lat_cleaned)
-#lon_origin = np.min(lon_cleaned)
-#lat_span = np.max(lat_cleaned) - np.min(lat_cleaned)
-#lon_span = np.max(lon_cleaned) - np.min(lon_cleaned)
-#zoom_level = 14
-#
-#a, margin_coords = getImageCluster(lat_origin, lon_origin, lat_span,  lon_span, zoom_level)
-#points = ax2.plot(lon_cleaned, lat_cleaned)
-#img = np.asarray(a)
-## Extent simply associates values, in this case longitude and latitude, to the
-## map's corners.
-#ax2.imshow(img, zorder=0, extent=[margin_coords[2], margin_coords[3], margin_coords[0], margin_coords[1]], origin="upper")
-#
-#
-#points = ax2.scatter(lon_cleaned, lat_cleaned, s=4)
-#ax2.set_xlim(np.min(lon), np.max(lon))
-#ax2.set_ylim(np.min(lat), np.max(lat))    
-#ax2.set_xlabel("Lat")
-#ax2.set_ylabel("Lon")
-#ax2.grid(True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+fig2, ax20 = plt.subplots()
+ax20.plot(lon_cleaned, lat_cleaned)
+mplleaflet.show(fig = ax20.figure)
 
 #plt.hold(True)
 #plt.plot(lon_cleaned, lat_cleaned, 'b') # Draw blue line
@@ -510,63 +507,6 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 #
 #mplleaflet.show()
 
-#http://api.openstreetmap.org/api/0.6/map?bbox=11.54,48.14,11.543,48.145&scale=700000&format=png
-
-#https://api.mapbox.com/styles/v1/mapbox/streets-v8/static/-122.4241,37.78,14.25,0,60/600x600?access_token=pk.eyJ1Ijoic3Rlc2FsYXRpIiwiYSI6ImNpejlxY3YyOTAyYmkyd21wc3BuaDUzbmsifQ.CsjWxwu7arzlJxPSpMR2fg
-
-#print "Downloading map... "
-#tries = 0
-#url = None
-#while tries < 60:
-#    tries += 1
-#    print 'Try {}...'.format(tries)
-#    try:
-#        url = urlopen('http://parent.tile.openstreetmap.org/cgi-bin/export?'
-#                      'bbox={lat1:.2f},{lon1:.2f},{lat2:.2f},{lon2:.2f}&'
-#                      'scale={scale:d}&format=png'.format(lat1=lat[0],
-#                      lat2=lat[1],
-#                      lon1=lon[0],
-#                      lon2=lon[1],
-#                      scale=scale))
-#    except HTTPError:
-#        sleep(5)
-#        continue
-#    else:
-#        print 'Map successfully downloaded.'
-#        break
-#
-#if url is None:
-#    print 'Failed to download a map.'
-#else:
-#    m = imread(url)
-#    imshow(m, extent=lat+lon, aspect='equal')
-#    show()
-#              
-## http://parent.tile.openstreetmap.org/cgi-bin/export?bbox={lat1:18.6},{lon1:50.35},{lat2:20.2},{lon2:20.2}&scale={scale:700000}&format=png
-#              
-#
-## plot the map
-#imshow(imread(url), extent=lat+lon, aspect='equal')
-#
-## plot other data here
-#
-#show()
-
-#MyApi = OsmApi(
-#            api = "http://www.openstreetmap.org",
-#            username = u"stef.salati@gmail.com",
-#            password = u"caccola00")
-#            #proxy_host = 'userproxy.tmg.local',
-#            #proxy_port = 8080
-#        #)
-#print MyApi.NodeGet(123)
-#{u'changeset': 532907, u'uid': 14298,
-# u'timestamp': u'2007-09-29T09:19:17Z',
-# u'lon': 10.790009299999999, u'visible': True,
-# u'version': 1, u'user': u'Mede',
-# u'lat': 59.9503044, u'tag': {}, u'id': 123}
-#
-#print node
 
 #def Compute(lat, lon, h, t):
 #    # Differentials
@@ -581,9 +521,3 @@ MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cle
 #    # Elevation gradient between consecutive points
 #    gradient = dh/ds
 #    return dh, dt, ds, s, speed_h, speed_v, gradient
-
-#MyApi = OsmApi(username = u"EtienneChove", password = u"*******")
-#MyApi.ChangesetCreate({u"comment": u"My first test"})
-#print MyApi.NodeCreate({u"lon":1, u"lat":1, u"tag": {}})
-#{u'changeset': 532907, u'lon': 1, u'version': 1, u'lat': 1, u'tag': {}, u'id': 164684}
-#MyApi.ChangesetClose()
