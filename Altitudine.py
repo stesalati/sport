@@ -9,7 +9,7 @@ import numpy as np
 from scipy import signal, fftpack
 # from scipy.misc import imread
 import matplotlib.pyplot as plt, mpld3
-from matplotlib import gridspec
+from matplotlib import gridspec, patches
 import gpxpy
 import datetime
 # from osmapi import OsmApi
@@ -23,6 +23,9 @@ import mplleaflet
 # import urllib
 # import scipy.misc
 import os.path
+import folium
+from folium import plugins as fp
+import webbrowser
 
 
 import math
@@ -31,56 +34,207 @@ from PIL import Image
 
 ###############################################################################
 
-class Cursor:
-    def __init__(self, ax):
-        self.ax = ax
-        self.lx = ax.axhline(color='k')  # the horiz line
-        self.ly = ax.axvline(color='k')  # the vert line
+#class Cursor:
+#    def __init__(self, ax):
+#        self.ax = ax
+#        self.lx = ax.axhline(color='k')  # the horiz line
+#        self.ly = ax.axvline(color='k')  # the vert line
+#
+#        # text location in axes coords
+#        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
+#
+#    def mouse_move(self, event):
+#        if not event.inaxes: return
+#
+#        x, y = event.xdata, event.ydata
+#        # update the line positions
+#        self.lx.set_ydata(y )
+#        self.ly.set_xdata(x )
+#
+#        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
+#        draw()
+#
+#class SnaptoCursor:
+#    """
+#    Like Cursor but the crosshair snaps to the nearest x,y point
+#    For simplicity, I'm assuming x is sorted
+#    """
+#    def __init__(self, ax, x, y):
+#        self.ax = ax
+#        self.lx = ax.axhline(color='k')  # the horiz line
+#        self.ly = ax.axvline(color='k')  # the vert line
+#        self.x = x
+#        self.y = y
+#        # text location in axes coords
+#        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
+#
+#    def mouse_move(self, event):
+#
+#        if not event.inaxes: return
+#
+#        x, y = event.xdata, event.ydata
+#
+#        indx = searchsorted(self.x, [x])[0]
+#        x = self.x[indx]
+#        y = self.y[indx]
+#        # update the line positions
+#        self.lx.set_ydata(y )
+#        self.ly.set_xdata(x )
+#
+#        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
+#        print ('x=%1.2f, y=%1.2f'%(x,y))
+#        draw()
+#        
+def FindQuadrant(deg):
+    n = np.zeros(len(deg))
+    n[np.where((deg >= 0) & (deg < 90) )] = 1
+    n[np.where((deg >= 90) & (deg < 180) )] = 4
+    n[np.where((deg >= 180) & (deg < 270) )] = 3
+    n[np.where((deg >= 270) & (deg < 360) )] = 2
+    n[np.where((deg < 0) & (deg >= -90) )] = 2
+    n[np.where((deg < -90) & (deg >= -180) )] = 3
+    n[np.where((deg < -180) & (deg >= -270) )] = 4
+    n[np.where((deg < -270) & (deg >= -360) )] = 1
+    return n
+    
+def PlotOnMap(lat, lon, data, sides, palette, library):
 
-        # text location in axes coords
-        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
+    # Create new figure
+    fig, ax = plt.subplots()
 
-    def mouse_move(self, event):
-        if not event.inaxes: return
+    # Actual math
+    dtrace_lon = np.diff(lon)
+    dtrace_lat = np.diff(lat)
+    m = dtrace_lat/dtrace_lon
+    deg = np.arctan2(dtrace_lat, dtrace_lon) / (2*np.pi) * 360
+    m[np.where(m == 0)] = 0.0000001
+    m_p = -1/m
+    quad = FindQuadrant(deg+90)
+    
+    # For each data vectors (columns of data)
+    distances = list()
+    M = np.size(data, axis = 1)
+    for col in range(M):
+        tmp_x = data[1:,col] / np.sqrt(1+m_p**2)
+        tmp_y = tmp_x * m_p
+        tmp_side = sides[col]
+        
+        idx_quad_1 = np.where(quad == 1)
+        idx_quad_2 = np.where(quad == 2)
+        idx_quad_3 = np.where(quad == 3)
+        idx_quad_4 = np.where(quad == 4)
+        
+        if tmp_side == 0:
+            tmp_x[idx_quad_1] = tmp_x[idx_quad_1]
+            tmp_y[idx_quad_1] = tmp_y[idx_quad_1]
+            tmp_x[idx_quad_2] = tmp_x[idx_quad_2]
+            tmp_y[idx_quad_2] = tmp_y[idx_quad_2]
+            tmp_x[idx_quad_3] = -tmp_x[idx_quad_3]
+            tmp_y[idx_quad_3] = -tmp_y[idx_quad_3]
+            tmp_x[idx_quad_4] = -tmp_x[idx_quad_4]
+            tmp_y[idx_quad_4] = -tmp_y[idx_quad_4]
+        else:
+            tmp_x[idx_quad_1] = -tmp_x[idx_quad_1]
+            tmp_y[idx_quad_1] = -tmp_y[idx_quad_1]
+            tmp_x[idx_quad_2] = -tmp_x[idx_quad_2]
+            tmp_y[idx_quad_2] = -tmp_y[idx_quad_2]
+            tmp_x[idx_quad_3] = tmp_x[idx_quad_3]
+            tmp_y[idx_quad_3] = tmp_y[idx_quad_3]
+            tmp_x[idx_quad_4] = tmp_x[idx_quad_4]
+            tmp_y[idx_quad_4] = tmp_y[idx_quad_4]
+        
+        distances.append((tmp_x, tmp_y))
+        
+    # Coordinates center
+    lat_center = np.median(lat)
+    lon_center = np.median(lon)
+    
+    # Depending on the library used for plotting (1 = mplleaflet, 2 = folium)
+    # https://www.youtube.com/watch?v=BwqBNpzQwJg
+    if library == 1:
+        # Plot trace
+        ax.plot(lon, lat, 'k', linewidth = 4)
+        
+        # Plot data
+        for col in range(M):
+            tmp_lon = lon[1:] + distances[col][0]
+            tmp_lat = lat[1:] + distances[col][1]
+            tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
+            tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
+            tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
+            ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
+            
+        # Plot on OSM
+        # http://matthiaseisen.com/pp/patterns/p0203/
+        mplleaflet.show(fig = ax.figure)
+        
+    elif library == 2:        
+        # Initialize map
+        map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
+        
+        # Plot markers
+        map_osm.add_children(folium.Marker([lat[0], lon[0]], popup = "Start"))
+        map_osm.add_children(folium.Marker([lat[-1], lon[-1]], popup = "End"))
+        #print np.where(h == np.max(h))
+        #map_osm.add_children(folium.Marker([lat[np.where(h == np.max(h))], lon[np.where(h == np.max(h))]], popup = "Highest point"))
+        
+        # Plot data
+        # Create patches the mplleaflet way, one for every data we want to plot
+        for col in range(M):
+            tmp_lon = lon[1:] + distances[col][0]
+            tmp_lat = lat[1:] + distances[col][1]
+            tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
+            tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
+            tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
+            ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
+        
+        # Convert them to GeoJson (apparently this way it works, but in theory it should be the same thing as writing the polygon in json directly)
+        # https://pypi.python.org/pypi/folium
+        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Folium_and_mplleaflet.ipynb
+        # http://python-visualization.github.io/folium/module/features.html
+        gj = mplleaflet.fig_to_geojson(fig=fig)
+        for col in range(M):
+            shape = gj['features'][col]
+            # style_function = lambda x: {'fillColor': '#00FF00'}
+            style_function = lambda x: {'fillColor': palette[col]}
+            gjson = folium.features.GeoJson(shape, style_function=style_function)
+            map_osm.add_children(gjson)
+            
+# JUST PLOT A LINE
+#             map_osm.add_children(folium.PolyLine(np.vstack((tmp_lat, tmp_lon)).T, color=palette[col], weight = 4))
+            
+# POLYGON WITG JSON
+#            a = [[[27, 43], [33, 43], [33, 47], [27, 47]]]
+#            a = [np.ndarray.tolist(np.vstack((tmp_poly_lat, tmp_poly_lon)).T)]
+#            gj_poly = folium.GeoJson(data={"type": "Polygon", "coordinates": a})
+#            gj_poly.add_to(map_osm)
 
-        x, y = event.xdata, event.ydata
-        # update the line positions
-        self.lx.set_ydata(y )
-        self.ly.set_xdata(x )
+# NOT SUPPORTED BY THE CURRENT VERSION OF FOLIUM, MUST UPGRADE IT
+#            folium.features.PolygonMarker(
+#                np.vstack((tmp_poly_lat, tmp_poly_lon)).T,
+#                color='blue',
+#                weight=10,
+#                fill_color='red',
+#                fill_opacity=0.5,
+#                popup='Tokyo, Japan').add_to(map_osm)
 
-        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
-        draw()
+        # Plot trace        
+        map_osm.add_children(folium.PolyLine(np.vstack((lat, lon)).T, color='#000000', weight = 4))
 
-class SnaptoCursor:
-    """
-    Like Cursor but the crosshair snaps to the nearest x,y point
-    For simplicity, I'm assuming x is sorted
-    """
-    def __init__(self, ax, x, y):
-        self.ax = ax
-        self.lx = ax.axhline(color='k')  # the horiz line
-        self.ly = ax.axvline(color='k')  # the vert line
-        self.x = x
-        self.y = y
-        # text location in axes coords
-        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
-
-    def mouse_move(self, event):
-
-        if not event.inaxes: return
-
-        x, y = event.xdata, event.ydata
-
-        indx = searchsorted(self.x, [x])[0]
-        x = self.x[indx]
-        y = self.y[indx]
-        # update the line positions
-        self.lx.set_ydata(y )
-        self.ly.set_xdata(x )
-
-        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
-        print ('x=%1.2f, y=%1.2f'%(x,y))
-        draw()
+        # Add fullscreen capability
+        try:
+            fp.Fullscreen(position='topright',
+                          title='Expand me',
+                          titleCancel='Exit me',
+                          forceSeparateButton=True).add_to(map_osm)
+        except:
+            print "Update Folium"
+        
+        # Create map
+        map_osm.save("osm.html", close_file=False)
+        webbrowser.open("osm.html", new=2)
+        
+    return fig
 
 def LoadGPX(filename):
     gpx_file = open(filename, 'r')
@@ -128,6 +282,20 @@ def HaversineDistanceBetweenTwoPoints(lat1, lon1, lat2, lon2):
     c = 2*np.arctan2(np.sqrt(a), np.sqrt(1-a))
     d = 6371000*c
     return d
+    
+#def Compute(lat, lon, h, t):
+#    # Differentials
+#    dh = np.diff(h)
+#    dt = np.diff(t)
+#    # Distance between consecutive points
+#    ds = HaversineDistance(lat, lon)
+#    s = np.cumsum(ds)
+#    # Horizontal and vertical speeds between consecutive points
+#    speed_h = ds/dt
+#    speed_v = dh/dt
+#    # Elevation gradient between consecutive points
+#    gradient = dh/ds
+#    return dh, dt, ds, s, speed_h, speed_v, gradient
     
 def PlotSamplingTimeAndDistance(n, dt, ds):
     fig1 = plt.figure(n)
@@ -199,37 +367,37 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, u
     
     return fig
     
-def MapPlot(ax1, ax2, s, h, dh, speed_h, speed_v, gradient, lat, lon):
-    # Elevation over distance
-    cursor1 = SnaptoCursor(ax1, s, h[0:-1])
-    plt.connect('motion_notify_event', cursor1.mouse_move)
-    ax1.plot(s, h[0:-1])
-    ax1.set_ylabel("Elevation (m)")
-    ax1.set_xlabel("Distance (m)")
-    ax1.grid(True)
-    ax1.set_xlim(np.min(s), np.max(s))
-    ax1.set_ylim(np.min(h), np.max(h))
-    
-    # Total ascent/descent
-    at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh, 1), TotalAscentDescent(dh, -1)),
-                  prop=dict(size=12), frameon=True,
-                  loc=2,
-                  )
-    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-    ax1.add_artist(at)
-    
-    # Coordinates
-    ax2.plot(lat, lon)
-    ax2.set_xlabel("Lat")
-    ax2.set_ylabel("Lon")
-    ax2.grid(True)
-    
-    return ax1, ax2, cursor1
+#def MapPlot(ax1, ax2, s, h, dh, speed_h, speed_v, gradient, lat, lon):
+#    # Elevation over distance
+#    cursor1 = SnaptoCursor(ax1, s, h[0:-1])
+#    plt.connect('motion_notify_event', cursor1.mouse_move)
+#    ax1.plot(s, h[0:-1])
+#    ax1.set_ylabel("Elevation (m)")
+#    ax1.set_xlabel("Distance (m)")
+#    ax1.grid(True)
+#    ax1.set_xlim(np.min(s), np.max(s))
+#    ax1.set_ylim(np.min(h), np.max(h))
+#    
+#    # Total ascent/descent
+#    at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh, 1), TotalAscentDescent(dh, -1)),
+#                  prop=dict(size=12), frameon=True,
+#                  loc=2,
+#                  )
+#    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
+#    ax1.add_artist(at)
+#    
+#    # Coordinates
+#    ax2.plot(lat, lon)
+#    ax2.set_xlabel("Lat")
+#    ax2.set_ylabel("Lon")
+#    ax2.grid(True)
+#    
+#    return ax1, ax2, cursor1
     
 def SummaryPlot(ax1, ax2, ax3, ax4, s, h, dh, speed_h, speed_v, gradient):
     # Elevation over distance
-    cursor = SnaptoCursor(ax1, s, h[0:-1])
-    plt.connect('motion_notify_event', cursor.mouse_move)
+    # cursor = SnaptoCursor(ax1, s, h[0:-1])
+    # plt.connect('motion_notify_event', cursor.mouse_move)
     ax1.plot(s, h[0:-1])
     plt.ylabel("Elevation over distance (m)")
     ax1.grid(True)
@@ -263,7 +431,7 @@ def SummaryPlot(ax1, ax2, ax3, ax4, s, h, dh, speed_h, speed_v, gradient):
     ax4.grid(True)
     plt.ylim([-5, 5])
     
-    return ax1, ax2, ax3, ax4, cursor
+    return ax1, ax2, ax3, ax4#, cursor
     
 def TotalAscentDescent(h, dir):
     if dir >= 0:
@@ -496,28 +664,8 @@ n = 10
 #MARGIN_PERCENTAGE = 0.1
 #MapInteractivePlot(fig, s_cleaned, h_filtered, dh_filtered, lat_cleaned, lon_cleaned, ZOOM_LEVEL, MARGIN_PERCENTAGE, USE_PROXY, PROXY_DATA, VERBOSE)
 
-
-fig2, ax20 = plt.subplots()
-ax20.plot(lon_cleaned, lat_cleaned)
-mplleaflet.show(fig = ax20.figure)
-
-#plt.hold(True)
-#plt.plot(lon_cleaned, lat_cleaned, 'b') # Draw blue line
-#plt.plot(lon_cleaned, lat_cleaned, 'rs') # Draw red squares
-#
-#mplleaflet.show()
-
-
-#def Compute(lat, lon, h, t):
-#    # Differentials
-#    dh = np.diff(h)
-#    dt = np.diff(t)
-#    # Distance between consecutive points
-#    ds = HaversineDistance(lat, lon)
-#    s = np.cumsum(ds)
-#    # Horizontal and vertical speeds between consecutive points
-#    speed_h = ds/dt
-#    speed_v = dh/dt
-#    # Elevation gradient between consecutive points
-#    gradient = dh/ds
-#    return dh, dt, ds, s, speed_h, speed_v, gradient
+data = np.ones((len(lat_cleaned),2))
+data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
+data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
+# PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('b','r'), 1)
+PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 2)
