@@ -8,6 +8,11 @@
 # TODO
 # - Add Kalman filter to smooth coordinates
 
+# DOCUMENTAZIONE PIU' UTILE!!!!
+# https://github.com/FlorianWilhelm/gps_data_with_python
+# https://github.com/FlorianWilhelm/gps_data_with_python/tree/master/notebooks
+# http://nbviewer.jupyter.org/format/slides/github/FlorianWilhelm/gps_data_with_python/blob/master/talk.ipynb#/8/2
+
 import numpy as np
 from scipy import signal, fftpack#, misc
 import matplotlib.pyplot as plt, mpld3
@@ -29,60 +34,62 @@ import sys
 import math
 import StringIO
 from PIL import Image
+from pykalman import KalmanFilter
+import srtm
+import pandas as pd
 
 ###############################################################################
+        
+def LoadGPX(filename, use_srtm_elevation):
+    gpx_file = open(filename, 'r')
+    gpx = gpxpy.parse(gpx_file)
+    
+    # In case there's more than one track/segment
+    # for track in gpx.tracks:
+    #     for segment in track.segments:        
+    #         for point in segment.points:
+    
+    segment = gpx.tracks[0].segments[0]
+    coords = pd.DataFrame([
+            {'lat': p.latitude, 
+             'lon': p.longitude, 
+             'ele': p.elevation,
+             'time': p.time,
+             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for p in segment.points])
+    coords.set_index('time', drop = True, inplace = True)
+    coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
+    
+    # https://github.com/tkrajina/srtm.py
+    if use_srtm_elevation:
+        try:
+            # Delete elevation data (it's already saved in coords)
+            for p in gpx_file.tracks[0].segments[0].points:
+                p.elevation = None
+                
+            # Get elevation from SRTM
+            elevation_data = srtm.get_data()
+            elevation_data.add_elevations(gpx, smooth=True)
+            coords['srtm'] = [p.elevation for p in gpx_file.tracks[0].segments[0].points]
+            # coords[['ele','srtm']].plot(title='Elevation');
+        except:
+            print "SRTM not working for some reason, probably a shitty proxy."
+    
+    # Add speed using embedded function (it won't be used, it's just to completeness)
+    segment.points[0].speed, segment.points[-1].speed = 0., 0.
+    gpx.add_missing_speeds()
+    coords['speed'] = [p.speed for p in gpx.tracks[0].segments[0].points]
+    
+    print segment.get_uphill_downhill()
+    print segment.get_elevation_extremes()
+    print segment.get_duration()
+    print segment.get_moving_data()
+    
+    lat = coords['lat'].values
+    lon = coords['lon'].values
+    h = coords['ele'].values
+    t = coords['time_sec'].values
+    return coords, lat, lon, h, t
 
-#class Cursor:
-#    def __init__(self, ax):
-#        self.ax = ax
-#        self.lx = ax.axhline(color='k')  # the horiz line
-#        self.ly = ax.axvline(color='k')  # the vert line
-#
-#        # text location in axes coords
-#        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
-#
-#    def mouse_move(self, event):
-#        if not event.inaxes: return
-#
-#        x, y = event.xdata, event.ydata
-#        # update the line positions
-#        self.lx.set_ydata(y )
-#        self.ly.set_xdata(x )
-#
-#        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
-#        draw()
-#
-#class SnaptoCursor:
-#    """
-#    Like Cursor but the crosshair snaps to the nearest x,y point
-#    For simplicity, I'm assuming x is sorted
-#    """
-#    def __init__(self, ax, x, y):
-#        self.ax = ax
-#        self.lx = ax.axhline(color='k')  # the horiz line
-#        self.ly = ax.axvline(color='k')  # the vert line
-#        self.x = x
-#        self.y = y
-#        # text location in axes coords
-#        self.txt = ax.text( 0.7, 0.9, '', transform=ax.transAxes)
-#
-#    def mouse_move(self, event):
-#
-#        if not event.inaxes: return
-#
-#        x, y = event.xdata, event.ydata
-#
-#        indx = searchsorted(self.x, [x])[0]
-#        x = self.x[indx]
-#        y = self.y[indx]
-#        # update the line positions
-#        self.lx.set_ydata(y )
-#        self.ly.set_xdata(x )
-#
-#        self.txt.set_text( 'x=%1.2f, y=%1.2f'%(x,y) )
-#        print ('x=%1.2f, y=%1.2f'%(x,y))
-#        draw()
-#        
 def FindQuadrant(deg):
     n = np.zeros(len(deg))
     n[np.where((deg >= 0) & (deg < 90) )] = 1
@@ -307,30 +314,7 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
         webbrowser.open("osm.html", new=2)
         
     return fig
-
-def LoadGPX(filename):
-    gpx_file = open(filename, 'r')
-    gpx = gpxpy.parse(gpx_file)
-    lats = []
-    lons = []
-    elevations = []
-    times = []
-    for track in gpx.tracks:
-        for segment in track.segments:        
-            for point in segment.points:
-                # print 'Point at {0}, ({1},{2}), elev: {3}'.format(point.time, point.latitude, point.longitude, point.elevation)
-                lats.append(point.latitude)
-                lons.append(point.longitude)
-                elevations.append(point.elevation)
-                times.append((point.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds())
-    # Convert to arrays. Units are meters for distance and seconds for time
-    lat = np.asarray(lats)
-    lon = np.asarray(lons)
-    h = np.asarray(elevations)
-    t = np.asarray(times)
-    t = t-t[0]
-    return lat, lon, h, t
-
+    
 def HaversineDistance(lat, lon):
     # http://www.movable-type.co.uk/scripts/latlong.html
     lat_rad = lat/360*2*np.pi
@@ -642,7 +626,7 @@ USE_PROXY = True
 PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
 # Loading .gpx file
-lat, lon, h, t = LoadGPX(FILENAME)
+coords, lat, lon, h, t = LoadGPX(FILENAME, False)
 s = np.cumsum(HaversineDistance(lat, lon))
 
 # Getting rid of outliers. If they're left to filtering they alter the results quite significantly.
@@ -716,6 +700,29 @@ gradient_filtered = dh_filtered/ds
 #fig, ax = SummaryPlot(10, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
 #fig, ax = plt.subplots()
 #ax, cursor = FinalPlot(ax, s_cleaned, h_filtered)
+
+
+
+
+# Smoothing algorithm for coordinates
+# https://pykalman.github.io/
+# https://github.com/balzer82/Kalman
+
+
+
+
+
+
+# Checking altitude
+
+
+
+
+
+
+
+
+
 
 
 n = 10
