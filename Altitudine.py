@@ -5,6 +5,9 @@
 
 # Use "%matplotlib qt" to plot in a different window
 
+# TODO
+# - Add Kalman filter to smooth coordinates
+
 import numpy as np
 from scipy import signal, fftpack
 # from scipy.misc import imread
@@ -26,6 +29,8 @@ import os.path
 import folium
 from folium import plugins as fp
 import webbrowser
+import vincent
+import json
 
 
 import math
@@ -97,7 +102,7 @@ def FindQuadrant(deg):
     n[np.where((deg < -270) & (deg >= -360) )] = 1
     return n
     
-def PlotOnMap(lat, lon, data, sides, palette, library):
+def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
 
     # Create new figure
     fig, ax = plt.subplots()
@@ -168,15 +173,90 @@ def PlotOnMap(lat, lon, data, sides, palette, library):
         # http://matthiaseisen.com/pp/patterns/p0203/
         mplleaflet.show(fig = ax.figure)
         
-    elif library == 2:        
+    elif library == 2:
+        # https://github.com/python-visualization/folium/tree/master/examples
         # Initialize map
         map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
         
+        # Data to plot made with Vincent
+        # http://vincent.readthedocs.io/en/latest/quickstart.html
+        index = np.ndarray.tolist(s)
+        
+        # Some stats
+        #ascent_text = "Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh_filtered, 1), TotalAscentDescent(dh_filtered, -1))
+        ascent_text = "Total ascent. %dm" % (TotalAscentDescent(dh_filtered, 1))
+        
+        # Altitude
+        plot_h = {'index': index}
+        plot_h['h'] = np.ndarray.tolist(h[1:])               
+        line = vincent.Area(plot_h, iter_idx='index')
+        line.axis_titles(x='Distance', y='Altitude')
+        line.legend(title = ascent_text)
+        line.to_json('plot_h.json')
+        marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
+        
+        # Gradient
+        plot_gradient = {'index': index}
+        plot_gradient['gradient'] = np.ndarray.tolist(gradient)               
+        line = vincent.Line(plot_gradient, iter_idx='index')
+        line.axis_titles(x='Distance', y='Altitude')
+        # line.legend(title='Categories')
+        line.to_json('plot_gradient.json')
+        #marker_pos2 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.01 * (np.max(lon) - np.min(lon))]
+        
+        # Speed_h
+        plot_speed_h = {'index': index}
+        plot_speed_h['speed_h'] = np.ndarray.tolist(speed_h)               
+        line = vincent.Line(plot_speed_h, iter_idx='index')
+        line.axis_titles(x='Distance', y='Altitude')
+        # line.legend(title='Categories')
+        line.to_json('plot_speed_h.json')
+        #marker_pos3 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.02 * (np.max(lon) - np.min(lon))]
+        
         # Plot markers
-        map_osm.add_children(folium.Marker([lat[0], lon[0]], popup = "Start"))
-        map_osm.add_children(folium.Marker([lat[-1], lon[-1]], popup = "End"))
-        #print np.where(h == np.max(h))
-        #map_osm.add_children(folium.Marker([lat[np.where(h == np.max(h))], lon[np.where(h == np.max(h))]], popup = "Highest point"))
+        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
+        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
+        # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+        map_osm.add_children(folium.Marker([lat[0], lon[0]],
+                                           popup = "Start",
+                                           icon=folium.Icon(color='green', icon='circle-arrow-up'),))
+        map_osm.add_children(folium.Marker([lat[-1], lon[-1]], 
+                                           popup = "End",
+                                           icon=folium.Icon(color='red', icon='circle-arrow-down')))
+        marker_highest_point = np.where(h == np.max(h))[0][0]
+        
+        highest_point_popup = folium.Popup(max_width = 1200).add_child(
+                                folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
+        map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
+                                           # popup = "Highest point",
+                                           popup = highest_point_popup,
+                                           icon=folium.Icon(icon='cloud')))
+        
+        # Plot "button" markers for plots
+        folium.RegularPolygonMarker(
+            location = marker_pos1,
+            fill_color = '#00FFFF',
+            radius = 12,
+            number_of_sides = 3,
+            popup = ascent_text
+        ).add_to(map_osm)
+        #folium.RegularPolygonMarker(
+        #    location = marker_location_gradient,
+        #    fill_color = '#00FFFF',
+        #    radius = 12,
+        #    number_of_sides = 3,
+        #    popup=folium.Popup(max_width = 1000).add_child(
+        #        folium.Vega(json.load(open('plot_gradient.json')), width = 1000, height = 250))
+        #).add_to(map_osm)
+        #
+        #folium.RegularPolygonMarker(
+        #    location = marker_location_speed_h,
+        #    fill_color = '#FF0000',
+        #    radius = 12,
+        #    number_of_sides = 3,
+        #    popup=folium.Popup(max_width = 1000).add_child(
+        #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
+        #).add_to(map_osm)
         
         # Plot data
         # Create patches the mplleaflet way, one for every data we want to plot
@@ -187,38 +267,37 @@ def PlotOnMap(lat, lon, data, sides, palette, library):
             tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
             tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
             ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
-        
         # Convert them to GeoJson (apparently this way it works, but in theory it should be the same thing as writing the polygon in json directly)
         # https://pypi.python.org/pypi/folium
         # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Folium_and_mplleaflet.ipynb
         # http://python-visualization.github.io/folium/module/features.html
-        gj = mplleaflet.fig_to_geojson(fig=fig)
-        for col in range(M):
-            shape = gj['features'][col]
-            # style_function = lambda x: {'fillColor': '#00FF00'}
-            style_function = lambda x: {'fillColor': palette[col]}
-            gjson = folium.features.GeoJson(shape, style_function=style_function)
-            map_osm.add_children(gjson)
+        # https://github.com/python-visualization/folium/issues/318
+        data_patches = mplleaflet.fig_to_geojson(fig=fig)
+        # Now apply the data, including formatting, contained in data_patches
+        style_function = lambda feature : dict(
+            color = feature['properties']['fillColor'],
+            weight = feature['properties']['weight'],
+            opacity = feature['properties']['opacity'])
+        for feature in data_patches['features']:
+            gj = folium.GeoJson(feature, style_function=style_function)
+            gj.add_to(map_osm)
             
-# JUST PLOT A LINE
-#             map_osm.add_children(folium.PolyLine(np.vstack((tmp_lat, tmp_lon)).T, color=palette[col], weight = 4))
+            # POLYGON WITG JSON
+            # a = [[[27, 43], [33, 43], [33, 47], [27, 47]]]
+            # a = [np.ndarray.tolist(np.vstack((tmp_poly_lat, tmp_poly_lon)).T)]
+            # gj_poly = folium.GeoJson(data={"type": "Polygon", "coordinates": a})
+            # gj_poly.add_to(map_osm)
             
-# POLYGON WITG JSON
-#            a = [[[27, 43], [33, 43], [33, 47], [27, 47]]]
-#            a = [np.ndarray.tolist(np.vstack((tmp_poly_lat, tmp_poly_lon)).T)]
-#            gj_poly = folium.GeoJson(data={"type": "Polygon", "coordinates": a})
-#            gj_poly.add_to(map_osm)
+            # NOT SUPPORTED BY THE CURRENT VERSION OF FOLIUM, MUST UPGRADE IT
+            #folium.features.PolygonMarker(
+            #    np.vstack((tmp_poly_lat, tmp_poly_lon)).T,
+            #    color='blue',
+            #    weight=10,
+            #    fill_color='red',
+            #    fill_opacity=0.5,
+            #    popup='Tokyo, Japan').add_to(map_osm)
 
-# NOT SUPPORTED BY THE CURRENT VERSION OF FOLIUM, MUST UPGRADE IT
-#            folium.features.PolygonMarker(
-#                np.vstack((tmp_poly_lat, tmp_poly_lon)).T,
-#                color='blue',
-#                weight=10,
-#                fill_color='red',
-#                fill_opacity=0.5,
-#                popup='Tokyo, Japan').add_to(map_osm)
-
-        # Plot trace        
+        # Plot trace
         map_osm.add_children(folium.PolyLine(np.vstack((lat, lon)).T, color='#000000', weight = 4))
 
         # Add fullscreen capability
@@ -668,4 +747,4 @@ data = np.ones((len(lat_cleaned),2))
 data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
 data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
 # PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('b','r'), 1)
-PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 2)
+PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 2, s_cleaned, h_filtered, gradient_filtered, speed_h)
