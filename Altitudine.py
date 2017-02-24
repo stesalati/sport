@@ -9,30 +9,23 @@
 # - Add Kalman filter to smooth coordinates
 
 import numpy as np
-from scipy import signal, fftpack
-# from scipy.misc import imread
+from scipy import signal, fftpack#, misc
 import matplotlib.pyplot as plt, mpld3
 from matplotlib import gridspec, patches
+from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
 import gpxpy
 import datetime
-# from osmapi import OsmApi
-from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
-# from urllib2 import urlopen
-import urllib2
+import urllib2#, urllib
 # from pylab import imshow, imread, show
-# import mpld3
 from mpld3 import plugins#, utils
 import mplleaflet
-# import urllib
-# import scipy.misc
 import os.path
 import folium
 from folium import plugins as fp
 import webbrowser
 import vincent
 import json
-
-
+import sys
 import math
 import StringIO
 from PIL import Image
@@ -625,8 +618,15 @@ print "/ /__/ / / /      ______/ /         |   / / / ______/ /   "
 print "\_____/ /_/      /_______/          |__/ /_/ /_______/    "
 print ""
 
+# Arguments
+if (len(sys.argv) == 2) & (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
+    FILENAME = sys.argv[1]
+    print "GPX file to load: %s" % FILENAME
+else:
+    FILENAME = "original.gpx"
+    print "No GPX file provided, loading default: %s" % FILENAME
+
 # Control constants
-FILENAME = "original.gpx"
 VERBOSE = False
 
 # Constants
