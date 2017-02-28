@@ -1,0 +1,103 @@
+
+
+# Documentation
+# https://pykalman.github.io
+# https://github.com/pykalman/pykalman/tree/master/examples/standard
+# https://github.com/MathYourLife/Matlab-Tools/commit/246131c02babac27c52fd759ed08c00ae78ba989
+# http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothing-with-irregular-time-steps
+
+
+# Setup the Kalman filter & smoother
+
+measurements = np.vstack([lat, lon, h]).T
+timesteps = t[1:]-t[0:-1]
+
+# transition_offsets = np.tile(timesteps, [6,1]).T
+# observation_offsets = np.tile(timesteps, [3,1]).T
+
+transition_matrices = np.zeros(shape = (len(timesteps), 6, 6))                 # It's time dependent as it contains dt for speed.
+for i in range(len(timesteps)):
+    transition_matrices[i] = np.array([[1, 0, 0, timesteps[i], 0, 0],
+                                       [0, 1, 0, 0, timesteps[i], 0],
+                                       [0, 0, 1, 0, 0, timesteps[i]],
+                                       [0, 0, 0, 1, 0, 0],
+                                       [0, 0, 0, 0, 1, 0],
+                                       [0, 0, 0, 0, 0, 1]])
+
+observation_matrices = np.array([[1, 0, 0, 0, 0, 0],                           # It's time independent as we only observe the position
+                                 [0, 1, 0, 0, 0, 0],
+                                 [0, 0, 1, 0, 0, 0]])
+
+COORDINATES_COV = 1e-4
+ELEVATION_COV = 30
+VELOCITY_COV = 1e-6
+observation_covariance = np.diag([COORDINATES_COV, COORDINATES_COV, ELEVATION_COV])**2 # Position = 0.0001° = 11.1m, Altitude = 30m
+
+initial_state_mean = np.hstack([measurements[0, :], 3*[0.]])  # Initial position and zero velocity
+initial_state_covariance = np.diag([COORDINATES_COV, COORDINATES_COV, ELEVATION_COV,
+                                    VELOCITY_COV, VELOCITY_COV, VELOCITY_COV])**2 # Same as the observation covariance
+
+kf = KalmanFilter(transition_matrices = transition_matrices,
+                  observation_matrices = observation_matrices,
+                  # transition_covariance = transition_covariance,
+                  observation_covariance = observation_covariance,
+                  # transition_offsets = transition_offsets,
+                  # observation_offsets = observation_offsets,
+                  initial_state_mean = initial_state_mean,
+                  initial_state_covariance = initial_state_covariance,
+                  em_vars = ['transition_covariance'])
+
+# Fit the transition covariance matrix
+kf = kf.em(measurements, n_iter = 5, em_vars='transition_covariance')
+
+# Smoothing
+state_means, state_vars = kf.smooth(measurements)
+
+# Debug plot to see the difference between measured and estimated coordinates
+fig_debug, ax_debug = plt.subplots(1,2, sharex = True)
+ax_debug[0].plot(state_means[:,0] - lat)
+ax_debug[1].plot(state_means[:,1] - lon)
+ax_debug[0].set_ylim(-1*COORDINATES_COV, +1*COORDINATES_COV)
+ax_debug[1].set_ylim(-1*COORDINATES_COV, +1*COORDINATES_COV)
+
+# Saving to a new coords
+k_coords = pd.DataFrame([
+              {'lat': state_means[i,0],
+               'lon': state_means[i,1],
+               'ele': state_means[i,2],
+               'time': coords.index[i],
+               'time_sec': coords['time_sec'][i]} for i in range(0,len(state_means))])
+k_coords.set_index('time', drop = True, inplace = True)
+
+# Plot original/corrected map
+fig_map, ax_map = plt.subplots()
+ax_map.plot(coords['lon'], coords['lat'], '0.5', linewidth = 2)
+ax_map.plot(k_coords['lon'], k_coords['lat'], 'r', linewidth = 2)
+mplleaflet.show(fig = ax_map.figure)
+
+# Plot original/corrected altitude profile
+fig_alt, ax_alt = plt.subplots()
+ax_alt.plot(coords['ele'], '0.5')
+ax_alt.plot(k_coords['ele'], 'r')
+ax_alt.grid(True)
+
+# Saving to gpx format to take advantage of all the functions provided by gpxpy
+k_gpx = gpx
+k_segment = k_gpx.tracks[0].segments[0]
+for i, p in enumerate(k_segment.points):
+    p.speed = None
+    p.elevation = k_coords['ele'][i]
+    p.longitude = k_coords['lon'][i]
+    p.latitude = k_coords['lat'][i]
+print k_segment.get_uphill_downhill()
+k_gpx.tracks[0].segments[0] = k_segment
+
+# Add speed using embedded function
+k_segment.points[0].speed, k_segment.points[-1].speed = 0., 0.
+k_gpx.add_missing_speeds()
+k_coords['speed'] = [p.speed for p in k_gpx.tracks[0].segments[0].points]
+
+print "\nNEW STATS AFTER KALMAN"
+print k_segment.get_uphill_downhill()
+print k_segment.get_elevation_extremes()
+print k_segment.get_moving_data()
