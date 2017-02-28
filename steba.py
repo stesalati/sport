@@ -42,6 +42,40 @@ import platform
 ###############################################################################
 
 
+def SaveDataToCoordsAndGPX(coords, state_means):
+    # Saving to a new coords
+    new_coords = pd.DataFrame([
+                  {'lat': state_means[i,0],
+                   'lon': state_means[i,1],
+                   'ele': state_means[i,2],
+                   'time': coords.index[i],
+                   'time_sec': coords['time_sec'][i]} for i in range(0,len(state_means))])
+    new_coords.set_index('time', drop = True, inplace = True)
+    
+    # Saving to gpx format to take advantage of all the functions provided by gpxpy
+    k_gpx = gpx
+    k_segment = k_gpx.tracks[0].segments[0]
+    for i, p in enumerate(k_segment.points):
+        p.speed = None
+        p.elevation = new_coords['ele'][i]
+        p.longitude = new_coords['lon'][i]
+        p.latitude = new_coords['lat'][i]
+    print k_segment.get_uphill_downhill()
+    k_gpx.tracks[0].segments[0] = k_segment
+    
+    # Add speed using embedded function
+    k_segment.points[0].speed, k_segment.points[-1].speed = 0., 0.
+    k_gpx.add_missing_speeds()
+    new_coords['speed'] = [p.speed for p in k_gpx.tracks[0].segments[0].points]
+    
+    print "\nNEW STATS AFTER KALMAN"
+    print k_segment.get_uphill_downhill()
+    print k_segment.get_elevation_extremes()
+    print k_segment.get_moving_data()
+    
+    return new_coords
+
+
 def LoadGPX(filename, use_srtm_elevation):
     gpx_file = open(filename, 'r')
     gpx = gpxpy.parse(gpx_file)
@@ -330,85 +364,6 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
     return fig
 
 
-## Functions to download tiles from OSM, useless as I use folium and mplleaflet
-def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
-  lat_rad = math.radians(lat_deg)
-  n = 2.0 ** zoom
-  xtile = int((lon_deg + 180.0) / 360.0 * n)
-  ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
-  return (xtile, ytile)
-
-def MapTilesNum2Deg(xtile, ytile, zoom):
-  n = 2.0 ** zoom
-  lon_deg = xtile / n * 360.0 - 180.0
-  lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * ytile / n)))
-  lat_deg = math.degrees(lat_rad)
-  return (lat_deg, lon_deg)
-
-def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta_long, zoom, verbose):
-    # Proxy setup with urllib
-    # proxies = {'http': 'salatis:Alzalarosa01@userproxy.tmg.local:8080'}
-    
-    # Proxy setup with urllib2
-    if use_proxy:
-        proxy = urllib2.ProxyHandler({'http': proxy_data})
-        opener = urllib2.build_opener(proxy)
-        urllib2.install_opener(opener)
-    
-    # Local storage folder
-    image_storage_path = 'map_tiles/'
-    savename = r"{0}_{1}_{2}.png"
-    
-    # Request url
-    smurl = r"http://a.tile.openstreetmap.org/{0}/{1}/{2}.png"
-    
-    # These are the tiles to download
-    xmin, ymax = MapTilesDeg2Num(lat_deg, lon_deg, zoom)
-    xmax, ymin = MapTilesDeg2Num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
-    if verbose:
-        print "Tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
-    
-    # Margin coordinates of the tiles that were downloaded (adding 1 to the max
-    # tiles as apparently the coordinates returned by MapTilesNum2Deg refer to
-    # the origin of the tile)
-    lat_min, lon_min = MapTilesNum2Deg(xmin, ymin, zoom)
-    lat_max, lon_max = MapTilesNum2Deg(xmax + 1, ymax + 1, zoom)
-    lat_min_actual = np.min((lat_min, lat_max))
-    lat_max_actual = np.max((lat_min, lat_max))
-    lon_min_actual = np.min((lon_min, lon_max))
-    lon_max_actual = np.max((lon_min, lon_max))
-    tiles_edges_coords = (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
-    if verbose:
-        print "User requested area >>>>>>>>>>>>> lat: %f - %f, lon: %f - %f" % (lat_deg, lat_deg + delta_lat, lon_deg, lon_deg + delta_long)
-        print "Returned area (must be wider) >>> lat: %f - %f, lon: %f - %f" % (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
-    
-    # Populate the desired map with tiles
-    Cluster = Image.new('RGB',((xmax-xmin+1)*256-1, (ymax-ymin+1)*256-1))
-    for xtile in range(xmin, xmax+1):
-        for ytile in range(ymin,  ymax+1):
-            try:
-                # Check if the tile is already present locally
-                if os.path.isfile(image_storage_path + savename.format(zoom, xtile, ytile)):
-                    tile = Image.open(image_storage_path + savename.format(zoom, xtile, ytile))
-                else:
-                    # Download from the Internet and save it locally for future
-                    # use
-                    imgurl = smurl.format(zoom, xtile, ytile)
-                    print("Tile not found locally, have to download it from: " + imgurl)
-                    imgstr = urllib2.urlopen(imgurl).read()
-                    tile = Image.open(StringIO.StringIO(imgstr))
-                    with open(image_storage_path + savename.format(zoom, xtile, ytile), 'wb') as f:
-                        f.write(imgstr)
-                        f.close()
-                # Append it to the rest of the cluster
-                Cluster.paste(tile, box=((xtile-xmin)*256 ,  (ytile-ymin)*255))
-            except: 
-                print("Tile loading (either from local repository or the Internet failed.")
-                tile = None
-                
-    return Cluster, tiles_edges_coords
-
-
 ## "Homemade" processing functions
 def RemoveOutliers(coords):
     # It's necessary to do so before filtering as they would alter the results quite significantly
@@ -557,101 +512,6 @@ def HaversineDistanceBetweenTwoPoints(lat1, lon1, lat2, lon2):
 #    return dh, dt, ds, s, speed_h, speed_v, gradient
 
 
-def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, use_proxy, proxy_data, verbose):
-    fig.subplots_adjust(hspace=0.1, wspace=0.1)
-    gs = gridspec.GridSpec(1, 3, width_ratios=[5, 0.001, 5])
-    ax0 = plt.subplot(gs[0])
-    ax1 = plt.subplot(gs[1])
-    ax2 = plt.subplot(gs[2])
-    X = np.vstack((s, h[0:-1], lon[0:-1], lat[0:-1]))
-    
-    # Elevation over distance
-    points = ax0.plot(X[0], X[1], color = '0.5')
-    points = ax0.scatter(X[0], X[1], s=4)
-    ax0.set_ylabel("Elevation (m)")
-    ax0.set_xlabel("Distance (m)")
-    ax0.grid(True)
-    ax0.set_xlim(np.min(s), np.max(s))
-    ax0.set_ylim(0, np.max(h) + 100)
-    
-    # Total ascent/descent
-    #at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh_filtered, 1), TotalAscentDescent(dh_filtered, -1)),
-    #                  prop=dict(size=12), frameon=True,
-    #                  loc=2,
-    #                  )
-    #at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-    #ax1.add_artist(at)
-    
-    # Fake subplot
-    points = ax1.scatter(X[0], X[2])
-    ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    ax1.yaxis.set_major_formatter(plt.NullFormatter())
-    
-    # Map with route
-    margin = np.max((np.max(lat) - np.min(lat), np.max(lon) - np.min(lon))) * margin_percentage
-    lat_origin = np.min(lat) - margin
-    lon_origin = np.min(lon) - margin
-    lat_span = np.max(lat) - np.min(lat) + 2 * margin
-    lon_span = np.max(lon) - np.min(lon) + 2 * margin
-    a, tiles_edges_coords = GetMapImageCluster(use_proxy, proxy_data, lat_origin, lon_origin, lat_span, lon_span, zoom_level, verbose)
-    fig.patch.set_facecolor('white')
-    points = ax2.plot(X[2], X[3], color = '0.5')
-    img = np.asarray(a)
-    # Extent simply associates values, in this case longitude and latitude, to
-    #	the map's corners.
-    ax2.imshow(img, extent=[tiles_edges_coords[2], tiles_edges_coords[3], tiles_edges_coords[0], tiles_edges_coords[1]], zorder=0, origin="lower")
-    points = ax2.scatter(X[2], X[3], s=4)
-    ax2.set_xlim(lon_origin, lon_origin + lon_span)
-    ax2.set_ylim(lat_origin, lat_origin + lat_span)    
-    ax2.set_xlabel("Lat")
-    ax2.set_ylabel("Lon")
-    ax2.grid(True)
-    plugins.connect(fig, plugins.LinkedBrush(points))
-    mpld3.show()
-    
-    return fig
-
-
-def SummaryPlot(ax1, ax2, ax3, ax4, s, h, dh, speed_h, speed_v, gradient):
-    # Elevation over distance
-    # cursor = SnaptoCursor(ax1, s, h[0:-1])
-    # plt.connect('motion_notify_event', cursor.mouse_move)
-    ax1.plot(s, h[0:-1])
-    plt.ylabel("Elevation over distance (m)")
-    ax1.grid(True)
-    plt.xlim([np.min(s), np.max(s)])
-    plt.ylim([np.min(h), np.max(h)])
-    
-    # Total ascent/descent
-    at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh, 1), TotalAscentDescent(dh, -1)),
-                  prop=dict(size=12), frameon=True,
-                  loc=2,
-                  )
-    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-    ax1.add_artist(at)
-    
-    # Horizontal speed
-    ax2.plot(s, speed_h*3.6)
-    plt.ylabel("Horizontal speed (km/h)")
-    ax2.grid(True)
-    plt.ylim([0, 50])
-    
-    # Vertical speed
-    ax3.plot(s, speed_v)
-    plt.ylabel("Vertical speed (m/s)")
-    ax3.grid(True)
-    plt.ylim([-5, 5])
-    
-    # Gradient
-    ax4.plot(s, gradient)
-    plt.ylabel("Gradient (m/m)")
-    plt.xlabel("Distance (m)")
-    ax4.grid(True)
-    plt.ylim([-5, 5])
-    
-    return ax1, ax2, ax3, ax4#, cursor
-
-
 ###############################################################################
 
 
@@ -769,6 +629,7 @@ h_filtered, dh_filtered, gradient_filtered = ElevationFilter(h_cleaned, ds, 7)
 RESAMPLE = False
 USE_SRTM_ELEVATION = False
 
+mask = [10, 11, 12, 13, 14, 15]
 
 
 
@@ -783,6 +644,13 @@ if not USE_SRTM_ELEVATION:
     measurements = coords[['lat','lon','ele']].values
 else:
     measurements = coords[['lat','lon','srtm']].values
+
+
+
+measurements = np.ma.masked_array(measurements, mask = mask)
+
+
+
 
 if RESAMPLE:
     # Pre-process coords by resampling and filling the missing values with NaNs
@@ -851,19 +719,13 @@ if not RESAMPLE:
     ax_debug[0].set_ylim(-1*COORDINATES_COV, +1*COORDINATES_COV)
     ax_debug[1].set_ylim(-1*COORDINATES_COV, +1*COORDINATES_COV)
 
-# Saving to a new coords
-k_coords = pd.DataFrame([
-              {'lat': state_means[i,0],
-               'lon': state_means[i,1],
-               'ele': state_means[i,2],
-               'time': coords.index[i],
-               'time_sec': coords['time_sec'][i]} for i in range(0,len(state_means))])
-k_coords.set_index('time', drop = True, inplace = True)
+
+k_coords = SaveDataToCoordsAndGPX(coords, state_means)
 
 # Plot original/corrected map
 fig_map, ax_map = plt.subplots()
-ax_map.plot(coords['lon'], coords['lat'], '0.5', linewidth = 2)
-ax_map.plot(k_coords['lon'], k_coords['lat'], 'r', linewidth = 2)
+ax_map.plot(coords['lon'], coords['lat'], '.b', linewidth = 2)
+ax_map.plot(state_means[:,1], state_means[:,0], '.r', linewidth = 2)
 mplleaflet.show(fig = ax_map.figure)
 
 # Plot original/corrected altitude profile
@@ -872,23 +734,4 @@ ax_alt.plot(coords['ele'], '0.5')
 ax_alt.plot(k_coords['ele'], 'r')
 ax_alt.grid(True)
 
-# Saving to gpx format to take advantage of all the functions provided by gpxpy
-k_gpx = gpx
-k_segment = k_gpx.tracks[0].segments[0]
-for i, p in enumerate(k_segment.points):
-    p.speed = None
-    p.elevation = k_coords['ele'][i]
-    p.longitude = k_coords['lon'][i]
-    p.latitude = k_coords['lat'][i]
-print k_segment.get_uphill_downhill()
-k_gpx.tracks[0].segments[0] = k_segment
 
-# Add speed using embedded function
-k_segment.points[0].speed, k_segment.points[-1].speed = 0., 0.
-k_gpx.add_missing_speeds()
-k_coords['speed'] = [p.speed for p in k_gpx.tracks[0].segments[0].points]
-
-print "\nNEW STATS AFTER KALMAN"
-print k_segment.get_uphill_downhill()
-print k_segment.get_elevation_extremes()
-print k_segment.get_moving_data()
