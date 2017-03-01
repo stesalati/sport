@@ -9,6 +9,10 @@ from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
 import matplotlib.pyplot as mpld3
 from pylab import imshow, imread, show
 
+## Proxy setup
+USE_PROXY = False
+PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
+
 def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
   lat_rad = math.radians(lat_deg)
   n = 2.0 ** zoom
