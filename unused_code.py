@@ -1,6 +1,5 @@
-CODICE NON UTILIZZATO
+## Functions to plot on OpenStreetMaps maps downloaded tile by tile. Now useless as I use folium and mplleaflet.
 
-## Functions to download tiles from OSM, useless as I use folium and mplleaflet
 def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
   lat_rad = math.radians(lat_deg)
   n = 2.0 ** zoom
