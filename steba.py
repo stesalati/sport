@@ -39,12 +39,12 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     # https://github.com/MathYourLife/Matlab-Tools/commit/246131c02babac27c52fd759ed08c00ae78ba989
     # http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothing-with-irregular-time-steps
     # https://github.com/balzer82/Kalman
+
+    HTML_FILENAME = "osm_kalman.html"
     
     # Resample is used to artificially increase the number of points and see how
     # the Kalman filter behaves in between breakpoints
-    RESAMPLE = False
-    USE_ACCELERATION = False
-    
+    orig_measurements = coords[['lat','lon','ele']].values
     if not RESAMPLE:
         measurements = coords[['lat','lon','ele']].values
     else:
@@ -80,9 +80,10 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         else:
             # The data have been resampled so there's no need for a time-variant
             # transition matrix
-            transition_matrices = np.array([[1, 0, 0, 1, 0, 0],
-                                            [0, 1, 0, 0, 1, 0],
-                                            [0, 0, 1, 0, 0, 1],
+            c = 1
+            transition_matrices = np.array([[1, 0, 0, c, 0, 0],
+                                            [0, 1, 0, 0, c, 0],
+                                            [0, 0, 1, 0, 0, c],
                                             [0, 0, 0, 1, 0, 0],
                                             [0, 0, 0, 0, 1, 0],
                                             [0, 0, 0, 0, 0, 1]])
@@ -135,28 +136,36 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
                       em_vars=['transition_covariance'])
     
     # Fit the transition covariance matrix
-    kf = kf.em(measurements, n_iter = 5, em_vars='transition_covariance')
+    kf = kf.em(measurements, n_iter = 10, em_vars='transition_covariance')
     
     # Smoothing
     state_means, state_vars = kf.smooth(measurements)
     
     if PLOT:
         # Plot original/corrected map
-        fig_map, ax_map = plt.subplots()
-        ax_map.plot(state_means[:,1], state_means[:,0], color="0.5", linestyle="-", marker="None")
-        ax_map.plot(coords['lon'], coords['lat'], color="r", linestyle="None", marker=".")
-        # ax_map.legend(['Measured', 'Estimated'])
-        ax_map.grid(True)
-        # Plot on map only if the number of points is small, otherwise it will not
-        # work and it's just betetr to use a normal plot
-        if len(state_means) < 2000:
-            mplleaflet.show(fig = ax_map.figure)
+        lat_center = np.median(state_means[:,0])
+        lon_center = np.median(state_means[:,1])
+        map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
+        map_osm.add_children(folium.PolyLine(orig_measurements[:,:2], 
+                                             color='#666666', weight = 4, opacity=1))
+        map_osm.add_children(folium.PolyLine(np.vstack((state_means[:,0], state_means[:,1])).T, 
+                                             color='#FF0000', weight = 4, opacity=1))
         
+        # Create and save map
+        map_osm.save(HTML_FILENAME, close_file=False)
+        if platform.system() == "Darwin":
+            # On MAC
+            cwd = os.getcwd()
+            webbrowser.open("file://" + cwd + "/" + HTML_FILENAME)
+        elif platform.system() == 'Windows':
+            # On Windows
+            webbrowser.open(HTML_FILENAME, new=2)
+                
         # Plot original/corrected altitude profile
         fig_alt, ax_alt = plt.subplots()
         #ax_alt.plot(coords['ele'], color='0.5', marker=".")
         ax_alt.plot(measurements[:,2], color="0.5", linestyle="None", marker=".")
-        ax_alt.plot(state_means[:,2], color="r", linestyle="-")
+        ax_alt.plot(state_means[:,2], color="r", linestyle="-", marker="None")
         ax_alt.legend(['Measured', 'Estimated'])
         ax_alt.grid(True)
         
@@ -608,7 +617,7 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
             #    popup='Tokyo, Japan').add_to(map_osm)
 
         # Plot trace
-        map_osm.add_children(folium.PolyLine(np.vstack((lat, lon)).T, color='#000000', weight = 4))
+        map_osm.add_children(folium.PolyLine(np.vstack((lat, lon)).T, color='#000000', weight = 10))
 
         # Add fullscreen capability
         try:
@@ -619,9 +628,8 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
         except:
             print "Fullscreen capability not available, try updating Folium"
         
-        # Create map
-        map_osm.save("osm.html", close_file=False)
-        
+        # Create and save map
+        map_osm.save(HTML_FILENAME, close_file=False)
         if platform.system() == "Darwin":
             # On MAC
             cwd = os.getcwd()
@@ -636,55 +644,48 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
 #==============================================================================
 # Main function
 #==============================================================================
-def main(argv=None):
+#def main(argv=None):
+#    if argv is None:
+#        argv = sys.argv
     
-    if argv is None:
-        argv = sys.argv
+print("############################ GPX VIEWER ############################\n")
+
+# Arguments
+if len(sys.argv) == 2:
+    if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
+        FILENAME = sys.argv[1]
+        print "GPX file to load: %s" % FILENAME
+else:
+    FILENAME = "original.gpx"
+    print "No GPX file provided, loading default: %s" % FILENAME
+
+# Control constants
+VERBOSE = False
+
+# Loading .gpx file
+gpx, coords = LoadGPX(FILENAME, False)
+
+#==============================================================================
+# Homemade processing
+#==============================================================================
+if False:
+    lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
+    h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
     
-    print "    _______  _______  ________      __    __  __  ________"
-    print "   / _____/ / ___  / / ______/      | |  / / / / / ______/"
-    print "  / / ___  / /__/ / / /_____  _____ | | / / / / / /_____  "
-    print " / / /  / / ____ / /_____  / /____/ | |/ / / / /_____  /  "
-    print "/ /__/ / / /      ______/ /         |   / / / ______/ /   "
-    print "\_____/ /_/      /_______/          |__/ /_/ /_______/    "
-    print ""
+    fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
+    ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
     
-    # Arguments
-    if len(sys.argv) == 2:
-        if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
-            FILENAME = sys.argv[1]
-            print "GPX file to load: %s" % FILENAME
-    else:
-        FILENAME = "original.gpx"
-        print "No GPX file provided, loading default: %s" % FILENAME
-    
-    # Control constants
-    VERBOSE = False
-    
-    # Loading .gpx file
-    gpx, coords = LoadGPX(FILENAME, False)
-    
-    #==============================================================================
-    # Homemade processing
-    #==============================================================================
-    if True:
-        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
-        h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
-        
-        fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
-        ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
-        
-        data = np.ones((len(lat_cleaned),2))
-        data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
-        data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-        PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 1, s_cleaned, h_filtered, speed_h)
-    
-    #==============================================================================
-    # Kalman processing
-    #==============================================================================
-    if False:
-        k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
+    data = np.ones((len(lat_cleaned),2))
+    data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
+    data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
+    PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 1, s_cleaned, h_filtered, speed_h)
+
+#==============================================================================
+# Kalman processing
+#==============================================================================
+if True:
+    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=True)
 
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+#    main()
