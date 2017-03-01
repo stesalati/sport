@@ -656,7 +656,8 @@ if len(sys.argv) == 2:
         FILENAME = sys.argv[1]
         print "GPX file to load: %s" % FILENAME
 else:
-    FILENAME = "original.gpx"
+    # FILENAME = "original.gpx"
+    FILENAME = "2017-03-01 1742__20170301_1742.gpx"
     print "No GPX file provided, loading default: %s" % FILENAME
 
 # Control constants
