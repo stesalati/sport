@@ -1,5 +1,14 @@
 ## Functions to plot on OpenStreetMaps maps downloaded tile by tile. Now useless as I use folium and mplleaflet.
 
+import math
+import StringIO
+from PIL import Image
+from mpld3 import plugins, utils
+import urllib2, urllib
+from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
+import matplotlib.pyplot as mpld3
+from pylab import imshow, imread, show
+
 def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
   lat_rad = math.radians(lat_deg)
   n = 2.0 ** zoom
