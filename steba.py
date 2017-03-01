@@ -441,7 +441,9 @@ def FindQuadrant(deg):
     n[np.where((deg < -270) & (deg >= -360) )] = 1
     return n
 
-def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
+def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
+    HTML_FILENAME = "osm.html"
+    
     # Create new figure
     fig, ax = plt.subplots()
 
@@ -509,7 +511,7 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
             
         # Plot on OSM
         # http://matthiaseisen.com/pp/patterns/p0203/
-        mplleaflet.show(fig = ax.figure)
+        mplleaflet.show(fig = ax.figure, path=HTML_FILENAME)
         
     elif library == 2:
         # https://github.com/python-visualization/folium/tree/master/examples
@@ -525,18 +527,8 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
         plot_h['h'] = np.ndarray.tolist(h[1:])               
         line = vincent.Area(plot_h, iter_idx='index')
         line.axis_titles(x='Distance', y='Altitude')
-        #line.legend(title = ascent_text)
         line.to_json('plot_h.json')
         # marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
-        
-        # Gradient
-        plot_gradient = {'index': index}
-        plot_gradient['gradient'] = np.ndarray.tolist(gradient)               
-        line = vincent.Line(plot_gradient, iter_idx='index')
-        line.axis_titles(x='Distance', y='Altitude')
-        # line.legend(title='Categories')
-        line.to_json('plot_gradient.json')
-        #marker_pos2 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.01 * (np.max(lon) - np.min(lon))]
         
         # Speed_h
         plot_speed_h = {'index': index}
@@ -566,24 +558,7 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
                                            popup = highest_point_popup,
                                            icon=folium.Icon(icon='cloud')))
         
-        # Plot "button" markers for plots
-        #folium.RegularPolygonMarker(
-        #    location = marker_pos1,
-        #    fill_color = '#00FFFF',
-        #    radius = 12,
-        #    number_of_sides = 3,
-        #    popup = ascent_text
-        #).add_to(map_osm)
-        
-        #folium.RegularPolygonMarker(
-        #    location = marker_location_gradient,
-        #    fill_color = '#00FFFF',
-        #    radius = 12,
-        #    number_of_sides = 3,
-        #    popup=folium.Popup(max_width = 1000).add_child(
-        #        folium.Vega(json.load(open('plot_gradient.json')), width = 1000, height = 250))
-        #).add_to(map_osm)
-        #
+        # Plot "button" markers for the speed plot
         #folium.RegularPolygonMarker(
         #    location = marker_location_speed_h,
         #    fill_color = '#FF0000',
@@ -650,10 +625,10 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, gradient, speed_h):
         if platform.system() == "Darwin":
             # On MAC
             cwd = os.getcwd()
-            webbrowser.open("file://" + cwd + "/" + "osm.html")
+            webbrowser.open("file://" + cwd + "/" + HTML_FILENAME)
         elif platform.system() == 'Windows':
             # On Windows
-            webbrowser.open("osm.html", new=2)
+            webbrowser.open(HTML_FILENAME, new=2)
         
     return fig
 
@@ -692,7 +667,7 @@ def main(argv=None):
     #==============================================================================
     # Homemade processing
     #==============================================================================
-    if False:
+    if True:
         lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
         h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
         
@@ -702,12 +677,12 @@ def main(argv=None):
         data = np.ones((len(lat_cleaned),2))
         data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
         data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-        PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 2, s_cleaned, h_filtered, gradient_filtered, speed_h)
+        PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 1, s_cleaned, h_filtered, speed_h)
     
     #==============================================================================
     # Kalman processing
     #==============================================================================
-    if True:
+    if False:
         k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
 
 
