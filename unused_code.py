@@ -77,9 +77,7 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
                 tile = None
                 
     return Cluster, tiles_edges_coords
-    
-    
-# ALTRE FUNZIONI PER PLOTTARE INFORMAZIONI
+
 def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, use_proxy, proxy_data, verbose):
     fig.subplots_adjust(hspace=0.1, wspace=0.1)
     gs = gridspec.GridSpec(1, 3, width_ratios=[5, 0.001, 5])
@@ -133,43 +131,3 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, u
     mpld3.show()
     
     return fig
-
-
-def SummaryPlot(ax1, ax2, ax3, ax4, s, h, dh, speed_h, speed_v, gradient):
-    # Elevation over distance
-    # cursor = SnaptoCursor(ax1, s, h[0:-1])
-    # plt.connect('motion_notify_event', cursor.mouse_move)
-    ax1.plot(s, h[0:-1])
-    plt.ylabel("Elevation over distance (m)")
-    ax1.grid(True)
-    plt.xlim([np.min(s), np.max(s)])
-    plt.ylim([np.min(h), np.max(h)])
-    
-    # Total ascent/descent
-    at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh, 1), TotalAscentDescent(dh, -1)),
-                  prop=dict(size=12), frameon=True,
-                  loc=2,
-                  )
-    at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-    ax1.add_artist(at)
-    
-    # Horizontal speed
-    ax2.plot(s, speed_h*3.6)
-    plt.ylabel("Horizontal speed (km/h)")
-    ax2.grid(True)
-    plt.ylim([0, 50])
-    
-    # Vertical speed
-    ax3.plot(s, speed_v)
-    plt.ylabel("Vertical speed (m/s)")
-    ax3.grid(True)
-    plt.ylim([-5, 5])
-    
-    # Gradient
-    ax4.plot(s, gradient)
-    plt.ylabel("Gradient (m/m)")
-    plt.xlabel("Distance (m)")
-    ax4.grid(True)
-    plt.ylim([-5, 5])
-    
-    return ax1, ax2, ax3, ax4#, cursor
