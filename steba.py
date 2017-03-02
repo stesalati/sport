@@ -144,8 +144,8 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     
     if PLOT:
         # Plot original/corrected map
-        lat_center = np.median(state_means[:,0])
-        lon_center = np.median(state_means[:,1])
+        lat_center = (np.max(state_means[:,0]) + np.min(state_means[:,0])) / 2.
+        lon_center = (np.max(state_means[:,1]) + np.min(state_means[:,1])) / 2.
         map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)
         map_osm.add_children(folium.PolyLine(orig_measurements[:,:2], 
                                              color='#666666', weight = 4, opacity=1))
@@ -177,7 +177,7 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     # Saving back to the coords dataframe and gpx
     k_coords, k_gpx = SaveDataToCoordsAndGPX(coords, state_means)
     
-    return k_coords
+    return k_coords, k_gpx
 
 def SaveDataToCoordsAndGPX(coords, state_means):
     # Saving to a new coords
@@ -190,26 +190,39 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     new_coords.set_index('time', drop = True, inplace = True)
     
     # Saving to gpx format to take advantage of all the functions provided by gpxpy
-#    new_gpx = gpx
-#    new_segment = new_gpx.tracks[0].segments[0]
-#    for i, p in enumerate(new_segment.points):
-#        p.speed = None
-#        p.elevation = new_coords['ele'][i]
-#        p.longitude = new_coords['lon'][i]
-#        p.latitude = new_coords['lat'][i]
-#    print new_segment.get_uphill_downhill()
-    #new_gpx.tracks[0].segments[0] = new_segment
+    new_gpx = gpxpy.gpx.GPX()
+    new_gpx.tracks.append(gpxpy.gpx.GPXTrack())
+    new_gpx.tracks[0].segments.append(gpxpy.gpx.GPXTrackSegment())
+    for i in range(0, len(new_coords)):
+        new_gpx.tracks[0].segments[0].points.append(gpxpy.gpx.GPXTrackPoint(latitude=new_coords['lat'][i],
+                                                                            longitude=new_coords['lon'][i],
+                                                                            elevation=new_coords['ele'][i],
+                                                                            speed=None,
+                                                                            time=new_coords.index[i]))
     
+    # Alternative method: instead of creating a new gpx object, clone th existing one and fill it with new values.
+    # The other is more correct in principle but I couldn't find any documentation to prove that is correct so I prefer
+    # to keep also this "dirty" method on record.
+    #new_gpx = gpx
+    #new_segment = new_gpx.tracks[0].segments[0]
+    #for i in range(0, len(k_coords)):
+    #    new_segment.points[i].speed = None
+    #    new_segment.points[i].elevation = k_coords['ele'][i]
+    #    new_segment.points[i].longitude = k_coords['lon'][i]
+    #    new_segment.points[i].latitude = k_coords['lat'][i]
+    #    new_segment.points[i].time = k_coords.index[i]
+    #    new_gpx.tracks[0].segments[0] = new_segment
+        
     # Add speed using embedded function
-#    new_segment.points[0].speed, new_segment.points[-1].speed = 0., 0.
-#    new_gpx.add_missing_speeds()
+    new_gpx.tracks[0].segments[0].points[0].speed = 0.
+    new_gpx.tracks[0].segments[0].points[-1].speed = 0.
+    new_gpx.add_missing_speeds()
+    
+    print "\nSTATS AFTER FILTERING"
+    GiveStats(new_gpx)
+    
     #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
     
-#    print "\nNEW STATS AFTER KALMAN"
-#    print new_segment.get_uphill_downhill()
-#    print new_segment.get_elevation_extremes()
-#    print new_segment.get_moving_data()
-    new_gpx = 1
     return new_coords, new_gpx
 
 
@@ -375,10 +388,8 @@ def LoadGPX(filename, track_nr, segment_nr, use_srtm_elevation):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
-    print "\nStats based on the GPX file"
-    print segment.get_uphill_downhill()
-    print segment.get_elevation_extremes()
-    print segment.get_moving_data()
+    print "\nSTATS BASED ON THE GPX FILE"
+    GiveStats(gpx)
     
     # https://github.com/tkrajina/srtm.py
     if use_srtm_elevation:
@@ -442,6 +453,23 @@ def MyTotalDistance(lat, lon):
     ds = HaversineDistance(lat, lon)
     s = np.sum(ds)
     return s
+    
+def GiveStats(gpx):
+    info = gpx.tracks[0].segments[0].get_moving_data()
+    m, s = divmod(info[0], 60)
+    h, m = divmod(m, 60)
+    print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
+    m, s = divmod(info[2], 60)
+    h, m = divmod(m, 60)
+    print "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[3]/1000.)
+    
+    info = gpx.tracks[0].segments[0].get_elevation_extremes()
+    print "Elevation   >>> {:.0f}m <---> {:.0f}m".format(info[0], info[1])
+    
+    info = gpx.tracks[0].segments[0].get_uphill_downhill()
+    print "Total climb >>> +{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    
+    return
     
 def FindQuadrant(deg):
     n = np.zeros(len(deg))
@@ -688,15 +716,15 @@ if len(sys.argv) == 2:
         FILENAME = sys.argv[1]
         print "GPX file to load: %s" % FILENAME
 else:
-    # FILENAME = "original.gpx"
-    FILENAME = "2017-03-01 1742__20170301_1742.gpx"
+    FILENAME = "original.gpx"
+    # FILENAME = "2017-03-01 1742__20170301_1742.gpx"
     print "No GPX file provided, loading default: %s" % FILENAME
 
 # Control constants
 VERBOSE = False
 
 # Loading .gpx file
-gpx, coords = LoadGPX(FILENAME, 0, 1, False)
+gpx, coords = LoadGPX(FILENAME, 0, 0, False)
 
 #==============================================================================
 # Homemade processing
@@ -723,10 +751,10 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=False)
+    k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
     PlotOnMap(np.vstack((coords['lat'], coords['lon'])).T,
               np.vstack((k_coords['lat'], k_coords['lon'])).T,
-              onmapdata=None, balloondata=None, rdp_reduction=True)
+              onmapdata=None, balloondata=None, rdp_reduction=False)
 
 
 #if __name__ == "__main__":
