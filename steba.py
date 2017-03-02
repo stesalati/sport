@@ -19,7 +19,7 @@ import datetime
 import mplleaflet
 import os.path
 import folium
-from folium import plugins as fp
+# from folium import plugins as fp
 import webbrowser
 import vincent
 import json
@@ -28,6 +28,7 @@ from pykalman import KalmanFilter
 import srtm
 import pandas as pd
 import platform
+from rdp import rdp
 
 #==============================================================================
 # Kalman processing functions
@@ -71,27 +72,27 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
             timesteps = np.asarray(coords['time_sec'][1:]) - np.asarray(coords['time_sec'][0:-1])
             transition_matrices = np.zeros(shape = (len(timesteps), 6, 6))
             for i in range(len(timesteps)):
-                transition_matrices[i] = np.array([[1, 0, 0, timesteps[i], 0, 0],
-                                                   [0, 1, 0, 0, timesteps[i], 0],
-                                                   [0, 0, 1, 0, 0, timesteps[i]],
-                                                   [0, 0, 0, 1, 0, 0],
-                                                   [0, 0, 0, 0, 1, 0],
-                                                   [0, 0, 0, 0, 0, 1]])
+                transition_matrices[i] = np.array([[1., 0., 0., timesteps[i], 0., 0.],
+                                                   [0., 1., 0., 0., timesteps[i], 0.],
+                                                   [0., 0., 1., 0., 0., timesteps[i]],
+                                                   [0., 0., 0., 1., 0., 0.],
+                                                   [0., 0., 0., 0., 1., 0.],
+                                                   [0., 0., 0., 0., 0., 1.]])
         else:
             # The data have been resampled so there's no need for a time-variant
             # transition matrix
-            c = 1
-            transition_matrices = np.array([[1, 0, 0, c, 0, 0],
-                                            [0, 1, 0, 0, c, 0],
-                                            [0, 0, 1, 0, 0, c],
-                                            [0, 0, 0, 1, 0, 0],
-                                            [0, 0, 0, 0, 1, 0],
-                                            [0, 0, 0, 0, 0, 1]])
+            c = 1.
+            transition_matrices = np.array([[1., 0., 0., c,  0., 0.],
+                                            [0., 1., 0., 0., c,  0.],
+                                            [0., 0., 1., 0., 0., c ],
+                                            [0., 0., 0., 1., 0., 0.],
+                                            [0., 0., 0., 0., 1., 0.],
+                                            [0., 0., 0., 0., 0., 1.]])
         
         # All the rest isn't influenced by the resampling
-        observation_matrices = np.array([[1, 0, 0, 0, 0, 0],
-                                         [0, 1, 0, 0, 0, 0],
-                                         [0, 0, 1, 0, 0, 0]])
+        observation_matrices = np.array([[1., 0., 0., 0., 0., 0.],
+                                         [0., 1., 0., 0., 0., 0.],
+                                         [0., 0., 1., 0., 0., 0.]])
         
         observation_covariance = np.diag([cov['coordinates'], cov['coordinates'], cov['elevation']])**2
         
@@ -103,20 +104,20 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     else:
         # The data have been resampled so there's no need for a time-variant
         # transition matrix
-        transition_matrices = np.array([[1, 0, 0, 1, 0, 0, 0.5, 0, 0],
-                                        [0, 1, 0, 0, 1, 0, 0, 0.5, 0],
-                                        [0, 0, 1, 0, 0, 1, 0, 0, 0.5],
-                                        [0, 0, 0, 1, 0, 0, 1, 0, 0],
-                                        [0, 0, 0, 0, 1, 0, 0, 1, 0],
-                                        [0, 0, 0, 0, 0, 1, 0, 0, 1],
-                                        [0, 0, 0, 0, 0, 0, 1, 0, 0],
-                                        [0, 0, 0, 0, 0, 0, 0, 1, 0],
-                                        [0, 0, 0, 0, 0, 0, 0, 0, 1]])
+        transition_matrices = np.array([[1., 0., 0., 1., 0., 0., 0.5, 0.,  0. ],
+                                        [0., 1., 0., 0., 1., 0., 0.,  0.5, 0. ],
+                                        [0., 0., 1., 0., 0., 1., 0.,  0.,  0.5],
+                                        [0., 0., 0., 1., 0., 0., 1.,  0.,  0. ],
+                                        [0., 0., 0., 0., 1., 0., 0.,  1.,  0. ],
+                                        [0., 0., 0., 0., 0., 1., 0.,  0.,  1. ],
+                                        [0., 0., 0., 0., 0., 0., 1.,  0.,  0. ],
+                                        [0., 0., 0., 0., 0., 0., 0.,  1.,  0. ],
+                                        [0., 0., 0., 0., 0., 0., 0.,  0.,  1. ]])
         
         # All the rest isn't influenced by the resampling
-        observation_matrices = np.array([[1, 0, 0, 0, 0, 0, 0, 0, 0],
-                                         [0, 1, 0, 0, 0, 0, 0, 0, 0],
-                                         [0, 0, 1, 0, 0, 0, 0, 0, 0]])
+        observation_matrices = np.array([[1., 0., 0., 0., 0., 0., 0., 0., 0.],
+                                         [0., 1., 0., 0., 0., 0., 0., 0., 0.],
+                                         [0., 0., 1., 0., 0., 0., 0., 0., 0.]])
         
         observation_covariance = np.diag([cov['coordinates'], cov['coordinates'], cov['elevation']])**2
         
@@ -145,10 +146,10 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         # Plot original/corrected map
         lat_center = np.median(state_means[:,0])
         lon_center = np.median(state_means[:,1])
-        map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
+        map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)
         map_osm.add_children(folium.PolyLine(orig_measurements[:,:2], 
                                              color='#666666', weight = 4, opacity=1))
-        map_osm.add_children(folium.PolyLine(np.vstack((state_means[:,0], state_means[:,1])).T, 
+        map_osm.add_children(folium.PolyLine(state_means[:,:2], 
                                              color='#FF0000', weight = 4, opacity=1))
         
         # Create and save map
@@ -173,8 +174,8 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
         print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
         
-        # Saving back to the coords dataframe and gpx
-        k_coords, k_gpx = SaveDataToCoordsAndGPX(coords, state_means)
+    # Saving back to the coords dataframe and gpx
+    k_coords, k_gpx = SaveDataToCoordsAndGPX(coords, state_means)
     
     return k_coords
 
@@ -354,16 +355,20 @@ def LoadGPX(filename, track_nr, segment_nr, use_srtm_elevation):
     gpx_file = open(filename, 'r')
     gpx = gpxpy.parse(gpx_file)
     
-    # In case there's more than one track/segment
-    # for track in gpx.tracks:
-    #     for segment in track.segments:        
-    #         for point in segment.points:
+    # Show the GPX file structure
+    print "\nGPX file structure:"
+    for itra, track in enumerate(gpx.tracks):
+        print "Track {}".format(itra)
+        for iseg, segment in enumerate(track.segments):
+            info = segment.get_moving_data()
+            print "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m".format(iseg, info[0]/60., info[2])
     
+    print "\nLoading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
             {'idx': i,
-             'lat': p.latitude, 
-             'lon': p.longitude, 
+             'lat': p.latitude,
+             'lon': p.longitude,
              'ele': p.elevation,
              'time': p.time,
              'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(segment.points)])
@@ -401,7 +406,7 @@ def LoadGPX(filename, track_nr, segment_nr, use_srtm_elevation):
     # Add speed using embedded function (it won't be used, it's just to completeness)
     segment.points[0].speed, segment.points[-1].speed = 0., 0.
     gpx.add_missing_speeds()
-    coords['speed'] = [p.speed for p in gpx.tracks[0].segments[0].points]
+    coords['speed'] = [p.speed for p in gpx.tracks[track_nr].segments[segment_nr].points]
     
     return gpx, coords
 
@@ -450,164 +455,193 @@ def FindQuadrant(deg):
     n[np.where((deg < -270) & (deg >= -360) )] = 1
     return n
 
-def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
+def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction):
+    # Documentation
+    # https://www.youtube.com/watch?v=BwqBNpzQwJg
+    # http://matthiaseisen.com/pp/patterns/p0203/
+    # https://github.com/python-visualization/folium/tree/master/examples
+    # http://vincent.readthedocs.io/en/latest/quickstart.html
+    
+    # Mapping parameters
     HTML_FILENAME = "osm.html"
+    MAPPING_LIBRARY = "folium"
+    # MAPPING_LIBRARY = "mplleaflet"
     
-    # Create new figure
-    fig, ax = plt.subplots()
-
-    # Actual math
-    dtrace_lon = np.diff(lon)
-    dtrace_lat = np.diff(lat)
-    m = dtrace_lat/dtrace_lon
-    deg = np.arctan2(dtrace_lat, dtrace_lon) / (2*np.pi) * 360
-    m[np.where(m == 0)] = 0.0000001
-    m_p = -1/m
-    quad = FindQuadrant(deg+90)
+    # RDP (Ramer–Douglas–Peucker) reduction
+    RDP_EPSILON = 1e-4
     
-    # For each data vectors (columns of data)
-    distances = list()
-    M = np.size(data, axis = 1)
-    for col in range(M):
-        tmp_x = data[1:,col] / np.sqrt(1+m_p**2)
-        tmp_y = tmp_x * m_p
-        tmp_side = sides[col]
+    # Unpacking coordinates
+    lat = coords_array[:,0]
+    lon = coords_array[:,1]
+    if coords_array2 is not None:
+        lat2 = coords_array2[:,0]
+        lon2 = coords_array2[:,1]
+    
+    # Process data to plot them along the trace
+    if onmapdata is not None:
+        # Unpacking onmapdata
+        data = onmapdata['data']
+        sides = onmapdata['sides']
+        palette = onmapdata['palette']
+        # Determine the perpendicular axis for each pair of consecutive points
+        dtrace_lon = np.diff(lon)
+        dtrace_lat = np.diff(lat)
+        m = dtrace_lat/dtrace_lon
+        deg = np.arctan2(dtrace_lat, dtrace_lon) / (2*np.pi) * 360
+        m[np.where(m == 0)] = 0.0000001
+        m_p = -1/m
+        quad = FindQuadrant(deg+90)
         
-        idx_quad_1 = np.where(quad == 1)
-        idx_quad_2 = np.where(quad == 2)
-        idx_quad_3 = np.where(quad == 3)
-        idx_quad_4 = np.where(quad == 4)
-        
-        if tmp_side == 0:
-            tmp_x[idx_quad_1] = tmp_x[idx_quad_1]
-            tmp_y[idx_quad_1] = tmp_y[idx_quad_1]
-            tmp_x[idx_quad_2] = tmp_x[idx_quad_2]
-            tmp_y[idx_quad_2] = tmp_y[idx_quad_2]
-            tmp_x[idx_quad_3] = -tmp_x[idx_quad_3]
-            tmp_y[idx_quad_3] = -tmp_y[idx_quad_3]
-            tmp_x[idx_quad_4] = -tmp_x[idx_quad_4]
-            tmp_y[idx_quad_4] = -tmp_y[idx_quad_4]
-        else:
-            tmp_x[idx_quad_1] = -tmp_x[idx_quad_1]
-            tmp_y[idx_quad_1] = -tmp_y[idx_quad_1]
-            tmp_x[idx_quad_2] = -tmp_x[idx_quad_2]
-            tmp_y[idx_quad_2] = -tmp_y[idx_quad_2]
-            tmp_x[idx_quad_3] = tmp_x[idx_quad_3]
-            tmp_y[idx_quad_3] = tmp_y[idx_quad_3]
-            tmp_x[idx_quad_4] = tmp_x[idx_quad_4]
-            tmp_y[idx_quad_4] = tmp_y[idx_quad_4]
-        
-        distances.append((tmp_x, tmp_y))
+        # For each data vectors (columns of data)
+        distances = list()
+        M = np.size(data, axis = 1)
+        for col in range(M):
+            tmp_x = data[1:,col] / np.sqrt(1+m_p**2)
+            tmp_y = tmp_x * m_p
+            tmp_side = sides[col]
+            
+            idx_quad_1 = np.where(quad == 1)
+            idx_quad_2 = np.where(quad == 2)
+            idx_quad_3 = np.where(quad == 3)
+            idx_quad_4 = np.where(quad == 4)
+            
+            if tmp_side == 0:
+                tmp_x[idx_quad_1] = tmp_x[idx_quad_1]
+                tmp_y[idx_quad_1] = tmp_y[idx_quad_1]
+                tmp_x[idx_quad_2] = tmp_x[idx_quad_2]
+                tmp_y[idx_quad_2] = tmp_y[idx_quad_2]
+                tmp_x[idx_quad_3] = -tmp_x[idx_quad_3]
+                tmp_y[idx_quad_3] = -tmp_y[idx_quad_3]
+                tmp_x[idx_quad_4] = -tmp_x[idx_quad_4]
+                tmp_y[idx_quad_4] = -tmp_y[idx_quad_4]
+            else:
+                tmp_x[idx_quad_1] = -tmp_x[idx_quad_1]
+                tmp_y[idx_quad_1] = -tmp_y[idx_quad_1]
+                tmp_x[idx_quad_2] = -tmp_x[idx_quad_2]
+                tmp_y[idx_quad_2] = -tmp_y[idx_quad_2]
+                tmp_x[idx_quad_3] = tmp_x[idx_quad_3]
+                tmp_y[idx_quad_3] = tmp_y[idx_quad_3]
+                tmp_x[idx_quad_4] = tmp_x[idx_quad_4]
+                tmp_y[idx_quad_4] = tmp_y[idx_quad_4]
+            
+            distances.append((tmp_x, tmp_y))
         
     # Coordinates center
-    lat_center = np.median(lat)
-    lon_center = np.median(lon)
+    lat_center = (np.max(lat) + np.min(lat)) / 2.
+    lon_center = (np.max(lon) + np.min(lon)) / 2.
     
-    # Depending on the library used for plotting (1 = mplleaflet, 2 = folium)
-    # https://www.youtube.com/watch?v=BwqBNpzQwJg
-    if library == 1:
+    # Depending on the library used for plotting
+    if MAPPING_LIBRARY == "mplleaflet":
+        # Creating figure
+        fig, ax = plt.subplots()
+        
         # Plot trace
         ax.plot(lon, lat, 'k', linewidth = 4)
+        if coords_array2 is not None:
+            ax.plot(lon2, lat2, 'r', linewidth = 4)
         
         # Plot data
-        for col in range(M):
-            tmp_lon = lon[1:] + distances[col][0]
-            tmp_lat = lat[1:] + distances[col][1]
-            tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
-            tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
-            tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
-            ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
+        if onmapdata is not None:
+            for col in range(M):
+                tmp_lon = lon[1:] + distances[col][0]
+                tmp_lat = lat[1:] + distances[col][1]
+                tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
+                tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
+                tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
+                ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
             
         # Plot on OSM
-        # http://matthiaseisen.com/pp/patterns/p0203/
         mplleaflet.show(fig = ax.figure, path=HTML_FILENAME)
         
-    elif library == 2:
-        # https://github.com/python-visualization/folium/tree/master/examples
+    elif MAPPING_LIBRARY == "folium":
         # Initialize map
         map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
         
-        # Data to plot made with Vincent
-        # http://vincent.readthedocs.io/en/latest/quickstart.html
-        index = np.ndarray.tolist(s)
+        # Balloon plots (made with Vincent)
+        if balloondata is not None:
+            index = np.ndarray.tolist(balloondata['distance'])
+            
+            # Altitude
+            plot_h = {'index': index}
+            plot_h['h'] = np.ndarray.tolist(balloondata['elevation'][1:])               
+            line = vincent.Area(plot_h, iter_idx='index')
+            line.axis_titles(x='Distance', y='Altitude')
+            line.to_json('plot_h.json')
+            # marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
+            
+            # Speed_h
+            plot_speed_h = {'index': index}
+            plot_speed_h['speed_h'] = np.ndarray.tolist(balloondata['speed'])
+            line = vincent.Line(plot_speed_h, iter_idx='index')
+            line.axis_titles(x='Distance', y='Altitude')
+            # line.legend(title='Categories')
+            line.to_json('plot_speed_h.json')
+            #marker_pos3 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.02 * (np.max(lon) - np.min(lon))]
+            
+            # Plot highest elevation marker
+            # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
+            # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
+            # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+            marker_highest_point = np.where(balloondata['elevation'] == np.max(balloondata['elevation']))[0][0]
+            
+            highest_point_popup = folium.Popup(max_width = 1200).add_child(
+                                    folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
+            map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
+                                               # popup = "Highest point",
+                                               popup = highest_point_popup,
+                                               icon=folium.Icon(icon='cloud')))
+            
+            # Plot "button" markers for the speed plot
+            #folium.RegularPolygonMarker(
+            #    location = marker_location_speed_h,
+            #    fill_color = '#FF0000',
+            #    radius = 12,
+            #    number_of_sides = 3,
+            #    popup=folium.Popup(max_width = 1000).add_child(
+            #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
+            #).add_to(map_osm)
         
-        # Altitude
-        plot_h = {'index': index}
-        plot_h['h'] = np.ndarray.tolist(h[1:])               
-        line = vincent.Area(plot_h, iter_idx='index')
-        line.axis_titles(x='Distance', y='Altitude')
-        line.to_json('plot_h.json')
-        # marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
-        
-        # Speed_h
-        plot_speed_h = {'index': index}
-        plot_speed_h['speed_h'] = np.ndarray.tolist(speed_h)               
-        line = vincent.Line(plot_speed_h, iter_idx='index')
-        line.axis_titles(x='Distance', y='Altitude')
-        # line.legend(title='Categories')
-        line.to_json('plot_speed_h.json')
-        #marker_pos3 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.02 * (np.max(lon) - np.min(lon))]
-        
-        # Plot markers
-        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
-        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
-        # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+        # Plot start/finish markers
         map_osm.add_children(folium.Marker([lat[0], lon[0]],
-                                           popup = "Start",
-                                           icon=folium.Icon(color='green', icon='circle-arrow-up'),))
+                                               popup = "Start",
+                                               icon=folium.Icon(color='green', icon='circle-arrow-up')))
         map_osm.add_children(folium.Marker([lat[-1], lon[-1]], 
-                                           popup = "End",
+                                           popup = "Finish",
                                            icon=folium.Icon(color='red', icon='circle-arrow-down')))
-        marker_highest_point = np.where(h == np.max(h))[0][0]
-        
-        highest_point_popup = folium.Popup(max_width = 1200).add_child(
-                                folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
-        map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
-                                           # popup = "Highest point",
-                                           popup = highest_point_popup,
-                                           icon=folium.Icon(icon='cloud')))
-        
-        # Plot "button" markers for the speed plot
-        #folium.RegularPolygonMarker(
-        #    location = marker_location_speed_h,
-        #    fill_color = '#FF0000',
-        #    radius = 12,
-        #    number_of_sides = 3,
-        #    popup=folium.Popup(max_width = 1000).add_child(
-        #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
-        #).add_to(map_osm)
         
         # Plot data
-        # Create patches the mplleaflet way, one for every data we want to plot
-        for col in range(M):
-            tmp_lon = lon[1:] + distances[col][0]
-            tmp_lat = lat[1:] + distances[col][1]
-            tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
-            tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
-            tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
-            ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
-        # Convert them to GeoJson (apparently this way it works, but in theory it should be the same thing as writing the polygon in json directly)
-        # https://pypi.python.org/pypi/folium
-        # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Folium_and_mplleaflet.ipynb
-        # http://python-visualization.github.io/folium/module/features.html
-        # https://github.com/python-visualization/folium/issues/318
-        data_patches = mplleaflet.fig_to_geojson(fig=fig)
-        # Now apply the data, including formatting, contained in data_patches
-        style_function = lambda feature : dict(
-            color = feature['properties']['fillColor'],
-            weight = feature['properties']['weight'],
-            opacity = feature['properties']['opacity'])
-        for feature in data_patches['features']:
-            gj = folium.GeoJson(feature, style_function=style_function)
-            gj.add_to(map_osm)
-            
-            # POLYGON WITG JSON
+        if onmapdata is not None:
+            fig, ax = plt.subplots()
+            # Method 1: Create patches the mplleaflet way, one for every data we want to plot
+            for col in range(M):
+                tmp_lon = lon[1:] + distances[col][0]
+                tmp_lat = lat[1:] + distances[col][1]
+                tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
+                tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
+                tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
+                ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
+            # Convert them to GeoJson (apparently this way it works, but in theory it should be the same thing as writing the polygon in json directly)
+            # https://pypi.python.org/pypi/folium
+            # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Folium_and_mplleaflet.ipynb
+            # http://python-visualization.github.io/folium/module/features.html
+            # https://github.com/python-visualization/folium/issues/318
+            data_patches = mplleaflet.fig_to_geojson(fig=fig)
+            # Now apply the data, including formatting, contained in data_patches
+            style_function = lambda feature : dict(
+                color = feature['properties']['fillColor'],
+                weight = feature['properties']['weight'],
+                opacity = feature['properties']['opacity'])
+            for feature in data_patches['features']:
+                gj = folium.GeoJson(feature, style_function=style_function)
+                gj.add_to(map_osm)
+                
+            # Method 2: Polygon with JSON (not working, dunno why)
             # a = [[[27, 43], [33, 43], [33, 47], [27, 47]]]
             # a = [np.ndarray.tolist(np.vstack((tmp_poly_lat, tmp_poly_lon)).T)]
             # gj_poly = folium.GeoJson(data={"type": "Polygon", "coordinates": a})
             # gj_poly.add_to(map_osm)
             
-            # NOT SUPPORTED BY THE CURRENT VERSION OF FOLIUM, MUST UPGRADE IT
+            # Method 3: Folium polygon maker (the simplest, but not supported by the current version of Folium, only by the dev version)
             #folium.features.PolygonMarker(
             #    np.vstack((tmp_poly_lat, tmp_poly_lon)).T,
             #    color='blue',
@@ -617,16 +651,14 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
             #    popup='Tokyo, Japan').add_to(map_osm)
 
         # Plot trace
-        map_osm.add_children(folium.PolyLine(np.vstack((lat, lon)).T, color='#000000', weight = 10))
-
-        # Add fullscreen capability
-        try:
-            fp.Fullscreen(position='topright',
-                          title='Expand me',
-                          titleCancel='Exit me',
-                          forceSeparateButton=True).add_to(map_osm)
-        except:
-            print "Fullscreen capability not available, try updating Folium"
+        if rdp_reduction:
+            if onmapdata is not None:
+                print "\nWARNING: RDP reduction activated with onmapdata, trace/polygons misallignments are possible"
+            coords_array = rdp(coords_array, RDP_EPSILON)
+            
+        map_osm.add_children(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
+        if coords_array2 is not None:
+            map_osm.add_children(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
@@ -638,7 +670,7 @@ def PlotOnMap(lat, lon, data, sides, palette, library, s, h, speed_h):
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
         
-    return fig
+    return
 
 
 #==============================================================================
@@ -664,7 +696,7 @@ else:
 VERBOSE = False
 
 # Loading .gpx file
-gpx, coords = LoadGPX(FILENAME, 0, 0, False)
+gpx, coords = LoadGPX(FILENAME, 0, 1, False)
 
 #==============================================================================
 # Homemade processing
@@ -679,13 +711,22 @@ if False:
     data = np.ones((len(lat_cleaned),2))
     data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
     data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-    PlotOnMap(lat_cleaned, lon_cleaned, data, (0, 1), ('blue','red'), 1, s_cleaned, h_filtered, speed_h)
+    onmapdata = {'data': data,
+                 'sides': (0, 1),
+                 'palette': ('blue','red')}
+    balloondata = {'distance': s_cleaned,
+                   'elevation': h_filtered,
+                   'speed': speed_h}
+    PlotOnMap(np.vstack((lat_cleaned, lon_cleaned)).T, None, onmapdata=onmapdata, balloondata=balloondata, rdp_reduction=False)
 
 #==============================================================================
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
+    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=False)
+    PlotOnMap(np.vstack((coords['lat'], coords['lon'])).T,
+              np.vstack((k_coords['lat'], k_coords['lon'])).T,
+              onmapdata=None, balloondata=None, rdp_reduction=True)
 
 
 #if __name__ == "__main__":
