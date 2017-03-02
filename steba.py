@@ -14,6 +14,7 @@ import numpy as np
 from scipy import signal, fftpack
 import matplotlib.pyplot as plt
 from matplotlib import patches
+from matplotlib.pyplot import ion, show
 import gpxpy
 import datetime
 import mplleaflet
@@ -169,6 +170,8 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         ax_alt.plot(state_means[:,2], color="r", linestyle="-", marker="None")
         ax_alt.legend(['Measured', 'Estimated'])
         ax_alt.grid(True)
+        # fig_alt.show()
+        # fig_alt.draw()
         
         # Stats
         print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
@@ -458,7 +461,8 @@ def GiveStats(gpx):
     info = gpx.tracks[0].segments[0].get_moving_data()
     m, s = divmod(info[0], 60)
     h, m = divmod(m, 60)
-    print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
+    # print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
+    print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[2]/1000.)
     m, s = divmod(info[2], 60)
     h, m = divmod(m, 60)
     print "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[3]/1000.)
@@ -489,6 +493,9 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
     # http://matthiaseisen.com/pp/patterns/p0203/
     # https://github.com/python-visualization/folium/tree/master/examples
     # http://vincent.readthedocs.io/en/latest/quickstart.html
+    # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
+    # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
+    # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
     
     # Mapping parameters
     HTML_FILENAME = "osm.html"
@@ -589,45 +596,45 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
         if balloondata is not None:
             index = np.ndarray.tolist(balloondata['distance'])
             
-            # Altitude
-            plot_h = {'index': index}
-            plot_h['h'] = np.ndarray.tolist(balloondata['elevation'][1:])               
-            line = vincent.Area(plot_h, iter_idx='index')
-            line.axis_titles(x='Distance', y='Altitude')
-            line.to_json('plot_h.json')
-            # marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
+            # Altitude, also used to plot the highest elevation marker
+            if balloondata['elevation'] is not None:
+                plot_h = {'index': index}
+                plot_h['h'] = np.ndarray.tolist(balloondata['elevation'][1:])               
+                line = vincent.Area(plot_h, iter_idx='index')
+                line.axis_titles(x='Distance', y='Altitude')
+                line.to_json('plot_h.json')
+                # marker_pos1 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))]]
+                
+                marker_highest_point = np.where(balloondata['elevation'] == np.max(balloondata['elevation']))[0][0]
+                if marker_highest_point == 0:
+                    marker_highest_point = 10
+                if marker_highest_point == len(balloondata['elevation']):
+                    marker_highest_point = len(balloondata['elevation']) - 10
+                
+                highest_point_popup = folium.Popup(max_width = 1200).add_child(
+                                        folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
+                map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
+                                                   # popup = "Highest point",
+                                                   popup = highest_point_popup,
+                                                   icon=folium.Icon(icon='cloud')))
             
             # Speed_h
-            plot_speed_h = {'index': index}
-            plot_speed_h['speed_h'] = np.ndarray.tolist(balloondata['speed'])
-            line = vincent.Line(plot_speed_h, iter_idx='index')
-            line.axis_titles(x='Distance', y='Altitude')
-            # line.legend(title='Categories')
-            line.to_json('plot_speed_h.json')
-            #marker_pos3 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.02 * (np.max(lon) - np.min(lon))]
-            
-            # Plot highest elevation marker
-            # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
-            # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
-            # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
-            marker_highest_point = np.where(balloondata['elevation'] == np.max(balloondata['elevation']))[0][0]
-            
-            highest_point_popup = folium.Popup(max_width = 1200).add_child(
-                                    folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
-            map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
-                                               # popup = "Highest point",
-                                               popup = highest_point_popup,
-                                               icon=folium.Icon(icon='cloud')))
-            
-            # Plot "button" markers for the speed plot
-            #folium.RegularPolygonMarker(
-            #    location = marker_location_speed_h,
-            #    fill_color = '#FF0000',
-            #    radius = 12,
-            #    number_of_sides = 3,
-            #    popup=folium.Popup(max_width = 1000).add_child(
-            #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
-            #).add_to(map_osm)
+            if balloondata['speed'] is not None:
+                plot_speed_h = {'index': index}
+                plot_speed_h['speed_h'] = np.ndarray.tolist(balloondata['speed'])
+                line = vincent.Line(plot_speed_h, iter_idx='index')
+                line.axis_titles(x='Distance', y='Altitude')
+                line.to_json('plot_speed_h.json')
+                # marker_pos3 = [lat[np.where(lat == np.min(lat))], lon[np.where(lon == np.min(lon))] + 0.02 * (np.max(lon) - np.min(lon))]
+                
+                #folium.RegularPolygonMarker(
+                #    location = marker_location_speed_h,
+                #    fill_color = '#FF0000',
+                #    radius = 12,
+                #    number_of_sides = 3,
+                #    popup=folium.Popup(max_width = 1000).add_child(
+                #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
+                #).add_to(map_osm)
         
         # Plot start/finish markers
         map_osm.add_children(folium.Marker([lat[0], lon[0]],
@@ -711,20 +718,26 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
 print("############################ GPX VIEWER ############################\n")
 
 # Arguments
-if len(sys.argv) == 2:
+track_nr = 0
+segment_nr = 0
+FILENAME = "original.gpx"
+# FILENAME = "2017-03-01 1742__20170301_1742.gpx"
+
+if len(sys.argv) >= 2:
     if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
         FILENAME = sys.argv[1]
-        print "GPX file to load: %s" % FILENAME
+        if len(sys.argv) == 4:
+            track_nr = int(sys.argv[2])
+            segment_nr = int(sys.argv[3])
 else:
-    FILENAME = "original.gpx"
-    # FILENAME = "2017-03-01 1742__20170301_1742.gpx"
-    print "No GPX file provided, loading default: %s" % FILENAME
+    print "No GPX file provided, the default file will be loaded."
 
 # Control constants
 VERBOSE = False
 
 # Loading .gpx file
-gpx, coords = LoadGPX(FILENAME, 0, 0, False)
+print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
+gpx, coords = LoadGPX(FILENAME, track_nr, segment_nr, False)
 
 #==============================================================================
 # Homemade processing
@@ -752,9 +765,12 @@ if False:
 #==============================================================================
 if True:
     k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
+    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
+                   'elevation': np.asarray(k_coords['ele']),
+                   'speed': None}
     PlotOnMap(np.vstack((coords['lat'], coords['lon'])).T,
               np.vstack((k_coords['lat'], k_coords['lon'])).T,
-              onmapdata=None, balloondata=None, rdp_reduction=False)
+              onmapdata=None, balloondata=balloondata, rdp_reduction=False)
 
 
 #if __name__ == "__main__":
