@@ -350,7 +350,7 @@ def PlotSummary(ax, s, h, dh, speed_h, speed_v, gradient):
 #==============================================================================
 # Generic functions
 #==============================================================================
-def LoadGPX(filename, use_srtm_elevation):
+def LoadGPX(filename, track_nr, segment_nr, use_srtm_elevation):
     gpx_file = open(filename, 'r')
     gpx = gpxpy.parse(gpx_file)
     
@@ -359,7 +359,7 @@ def LoadGPX(filename, use_srtm_elevation):
     #     for segment in track.segments:        
     #         for point in segment.points:
     
-    segment = gpx.tracks[0].segments[0]
+    segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
             {'idx': i,
              'lat': p.latitude, 
@@ -656,14 +656,15 @@ if len(sys.argv) == 2:
         FILENAME = sys.argv[1]
         print "GPX file to load: %s" % FILENAME
 else:
-    FILENAME = "original.gpx"
+    # FILENAME = "original.gpx"
+    FILENAME = "2017-03-01 1742__20170301_1742.gpx"
     print "No GPX file provided, loading default: %s" % FILENAME
 
 # Control constants
 VERBOSE = False
 
 # Loading .gpx file
-gpx, coords = LoadGPX(FILENAME, False)
+gpx, coords = LoadGPX(FILENAME, 0, 0, False)
 
 #==============================================================================
 # Homemade processing
@@ -684,7 +685,7 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=True)
+    k_coords = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
 
 
 #if __name__ == "__main__":
