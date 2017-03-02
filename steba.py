@@ -49,11 +49,13 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     orig_measurements = coords[['lat','lon','ele']].values
     if not RESAMPLE:
         measurements = coords[['lat','lon','ele']].values
+        print "\nNumber of samples: {}".format(len(measurements))
     else:
         # Pre-process coords by resampling and filling the missing values with NaNs
         coords = coords.resample('1S').asfreq()
         # Mask those NaNs
         measurements = coords[['lat','lon','ele']].values
+        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
         measurements = np.ma.masked_invalid(measurements)
         
     # Setup the Kalman filter & smoother
@@ -720,8 +722,9 @@ print("############################ GPX VIEWER ############################\n")
 # Arguments
 track_nr = 0
 segment_nr = 0
-FILENAME = "original.gpx"
-# FILENAME = "2017-03-01 1742__20170301_1742.gpx"
+FILENAME = "ahrtal.gpx"
+# FILENAME = "casa-lavoro1.gpx"
+# FILENAME = "casa-lavoro2.gpx"
 
 if len(sys.argv) >= 2:
     if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
@@ -764,7 +767,7 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
+    k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=True)
     balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
                    'elevation': np.asarray(k_coords['ele']),
                    'speed': None}
