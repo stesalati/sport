@@ -172,8 +172,7 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         ax_alt.plot(state_means[:,2], color="r", linestyle="-", marker="None")
         ax_alt.legend(['Measured', 'Estimated'])
         ax_alt.grid(True)
-        # fig_alt.show()
-        # fig_alt.draw()
+        fig_alt.show()
         
         # Stats
         print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
