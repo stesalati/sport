@@ -614,7 +614,7 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                     marker_highest_point = len(balloondata['elevation']) - 10
                 
                 highest_point_popup = folium.Popup(max_width = 1200).add_child(
-                                        folium.Vega(json.load(open('plot_h.json')), width = 1200, height = 600))
+                                        folium.Vega(json.load(open('plot_h.json')), width = 1000, height = 550))
                 map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
                                                    # popup = "Highest point",
                                                    popup = highest_point_popup,
@@ -767,12 +767,12 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=True)
+    k_coords, k_gpx = ApplyKalmanFilter(coords, gpx, RESAMPLE=False, USE_ACCELERATION=False, PLOT=True)
     balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
                    'elevation': np.asarray(k_coords['ele']),
                    'speed': None}
-    PlotOnMap(np.vstack((coords['lat'], coords['lon'])).T,
-              np.vstack((k_coords['lat'], k_coords['lon'])).T,
+    PlotOnMap(np.vstack((k_coords['lat'], k_coords['lon'])).T,
+              np.vstack((coords['lat'], coords['lon'])).T,
               onmapdata=None, balloondata=balloondata, rdp_reduction=False)
 
 
