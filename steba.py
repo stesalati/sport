@@ -34,7 +34,7 @@ from rdp import rdp
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
+def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, VARIANCE_SMOOTH, PLOT):
     # Documentation
     # https://pykalman.github.io
     # https://github.com/pykalman/pykalman/tree/master/examples/standard
@@ -50,13 +50,21 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     if not RESAMPLE:
         measurements = coords[['lat','lon','ele']].values
         print "\nNumber of samples: {}".format(len(measurements))
-    else:
+    elif RESAMPLE == 1:
         # Pre-process coords by resampling and filling the missing values with NaNs
         coords = coords.resample('1S').asfreq()
         # Mask those NaNs
         measurements = coords[['lat','lon','ele']].values
         print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
         measurements = np.ma.masked_invalid(measurements)
+    elif RESAMPLE == 2:
+        # Resample but fill NaNs with interpolation (different methods to be tried)
+        # There's no need to mask values this way
+        # http://pandas.pydata.org/pandas-docs/stable/generated/pandas.Series.interpolate.html
+        coords = coords.resample('1S').asfreq()
+        coords = coords.interpolate(method='linear')
+        measurements = coords[['lat','lon','ele']].values
+        print "\nNumber of samples: {}".format(len(measurements))
         
     # Setup the Kalman filter & smoother
         
@@ -150,19 +158,23 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
     # removed are those that were already masked, that, being artificially
     # added NaNs, the result doesn't change much.
     THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-    coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
-    coord_var_r = np.median(np.sort(coord_var)[:-20:-1]) / np.mean(coord_var)
-    print "\nANALYZING RESULTING VARIANCE"
-    print "Ratio between mean_variance_top20/median_variance: {}".format(coord_var_r)
-    idx_var_too_high = np.where(coord_var > (10 * np.median(coord_var)))
-    print "Number of points whose variance is considered too high: {}".format(len(idx_var_too_high[0]))
-    nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
-    print "Number of points that were already masked (being NaNs): {}".format(nr_further_points_to_mask)
-    if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
-        measurements.mask[idx_var_too_high, :] = True
-        state_means2, state_vars2 = kf.smooth(measurements)
-        coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
-    
+    if VARIANCE_SMOOTH:
+        coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
+        coord_var_r = np.median(np.sort(coord_var)[:-20:-1]) / np.mean(coord_var)
+        print "\nANALYZING RESULTING VARIANCE"
+        print "Ratio between mean_variance_top20/median_variance: {}".format(coord_var_r)
+        idx_var_too_high = np.where(coord_var > (10 * np.median(coord_var)))
+        print "Number of points whose variance is considered too high: {}".format(len(idx_var_too_high[0]))
+        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
+        print "Number of points that were already masked (being NaNs): {}".format(nr_further_points_to_mask)
+        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
+            # ... then it's worth continuing
+            measurements.mask[idx_var_too_high, :] = True
+            state_means2, state_vars2 = kf.smooth(measurements)
+            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
+        else:
+            # ... then turn off VARIANCE_SMOOTH cos it's not worth
+            VARIANCE_SMOOTH = False
     
     if PLOT:
         # Plot original/corrected map
@@ -173,7 +185,7 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
                                              color='#666666', weight = 4, opacity=1))
         map_osm.add_children(folium.PolyLine(state_means[:,:2], 
                                              color='#FF0000', weight = 4, opacity=1))
-        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
+        if VARIANCE_SMOOTH:
             map_osm.add_children(folium.PolyLine(state_means2[:,:2], 
                                                  color='#00FF00', weight = 4, opacity=1))
         
@@ -197,14 +209,15 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, PLOT):
         fig_alt.show()
         
         # Plot coordinates variance
-        fig_coordvar, ax_coordvar = plt.subplots(2,1)
-        ax_coordvar[0].plot(coord_var, color="r", linestyle="-", marker="None")
-        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
-            ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
-        ax_coordvar[0].grid(True)
-        ax_coordvar[1].hist(np.log10(coord_var), bins=100)
-        ax_coordvar[1].grid(True)
-        fig_coordvar.show()
+        if VARIANCE_SMOOTH:
+            fig_coordvar, ax_coordvar = plt.subplots(2,1)
+            ax_coordvar[0].plot(coord_var, color="r", linestyle="-", marker="None")
+            if VARIANCE_SMOOTH:
+                ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
+            ax_coordvar[0].grid(True)
+            ax_coordvar[1].hist(np.log10(coord_var), bins=100)
+            ax_coordvar[1].grid(True)
+            fig_coordvar.show()
         
         # Stats
         # print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
@@ -801,7 +814,11 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords, k_gpx, state_vars, measurements = ApplyKalmanFilter(coords, gpx, RESAMPLE=True, USE_ACCELERATION=False, PLOT=True)
+    k_coords, k_gpx, state_vars, measurements = ApplyKalmanFilter(coords, gpx,
+                                                                  RESAMPLE=2, 
+                                                                  USE_ACCELERATION=False,
+                                                                  VARIANCE_SMOOTH=False,
+                                                                  PLOT=True)
 #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
 #                   'elevation': np.asarray(k_coords['ele']),
 #                   'speed': None}
