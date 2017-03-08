@@ -34,37 +34,70 @@ from rdp import rdp
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, VARIANCE_SMOOTH, PLOT):
+def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PLOT):
     # Documentation
     # https://pykalman.github.io
     # https://github.com/pykalman/pykalman/tree/master/examples/standard
     # https://github.com/MathYourLife/Matlab-Tools/commit/246131c02babac27c52fd759ed08c00ae78ba989
     # http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothing-with-irregular-time-steps
     # https://github.com/balzer82/Kalman
-
+    
+    # Methods:
+    # The only measninful ones are 0 and 1, better 0 with enough points. All
+    # others are just tries
+    
     HTML_FILENAME = "osm_kalman.html"
     
-    # Resample is used to artificially increase the number of points and see how
+    # Method is used to artificially increase the number of points and see how
     # the Kalman filter behaves in between breakpoints
     orig_measurements = coords[['lat','lon','ele']].values
-    if not RESAMPLE:
+    if not METHOD:
+        # Method 0: just use the data available
+        # Create the "measurement" array
         measurements = coords[['lat','lon','ele']].values
         print "\nNumber of samples: {}".format(len(measurements))
-    elif RESAMPLE == 1:
-        # Pre-process coords by resampling and filling the missing values with NaNs
+        
+    elif METHOD == 1:
+        # Method 1: resample at T=1s and fill the missing values with NaNs
         coords = coords.resample('1S').asfreq()
-        # Mask those NaNs
+        # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
         print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
         measurements = np.ma.masked_invalid(measurements)
-    elif RESAMPLE == 2:
-        # Resample but fill NaNs with interpolation (different methods to be tried)
-        # There's no need to mask values this way
+        
+    elif METHOD == 2:
+        # Method 2: resample but fill NaNs with interpolation, there's no need
+        # to mask values this way
         # http://pandas.pydata.org/pandas-docs/stable/generated/pandas.Series.interpolate.html
         coords = coords.resample('1S').asfreq()
         coords = coords.interpolate(method='linear')
+        # Create the "measurement" array
         measurements = coords[['lat','lon','ele']].values
-        print "\nNumber of samples: {}".format(len(measurements))
+        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        
+    elif METHOD == 3:
+        # Method 3: fill the gaps between points too far away with NaNs. It's
+        # different from resampling as T is not constant
+        for i in range(0,len(coords)-1):
+            gap = coords.index[i+1] - coords.index[i]
+            GAP_CADENCE = 10 # seconds
+            if gap >= datetime.timedelta(seconds=GAP_CADENCE * 2):
+                gap_idx = pd.DatetimeIndex(start=coords.index[i]+datetime.timedelta(seconds=GAP_CADENCE),
+                                           end=coords.index[i+1]-datetime.timedelta(seconds=2),
+                                           freq='10S')
+                gap_coords = pd.DataFrame(coords, index=gap_idx)
+                coords = coords.append(gap_coords)
+                # print "Added {} points in between {} and {}".format(len(gap_idx), coords.index[i], coords.index[i+1])
+        # Sort all points        
+        coords = coords.sort_index()
+        # Fill the time_sec column
+        for i in range(0,len(coords)):
+            coords['time_sec'][i] = (coords.index[i] - datetime.datetime(2000,1,1,0,0,0)).total_seconds()
+        coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
+        # Create the "measurement" array and mask NaNs
+        measurements = coords[['lat','lon','ele']].values
+        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        measurements = np.ma.masked_invalid(measurements)
         
     # Setup the Kalman filter & smoother
         
@@ -77,7 +110,7 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, VARIANCE_SMOOTH, 
            'elevation_acceleration': 1e-6 * 1000}
         
     if not USE_ACCELERATION:
-        if not RESAMPLE:
+        if METHOD == 0 or METHOD == 3:
             # The samples are randomly spaced in time, so dt varies with time and a
             # time dependent transition matrix is necessary
             timesteps = np.asarray(coords['time_sec'][1:]) - np.asarray(coords['time_sec'][0:-1])
@@ -113,17 +146,36 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, VARIANCE_SMOOTH, 
                                             cov['horizontal_velocity'], cov['horizontal_velocity'], cov['elevation_velocity']])**2
         
     else:
-        # The data have been resampled so there's no need for a time-variant
-        # transition matrix
-        transition_matrices = np.array([[1., 0., 0., 1., 0., 0., 0.5, 0.,  0. ],
-                                        [0., 1., 0., 0., 1., 0., 0.,  0.5, 0. ],
-                                        [0., 0., 1., 0., 0., 1., 0.,  0.,  0.5],
-                                        [0., 0., 0., 1., 0., 0., 1.,  0.,  0. ],
-                                        [0., 0., 0., 0., 1., 0., 0.,  1.,  0. ],
-                                        [0., 0., 0., 0., 0., 1., 0.,  0.,  1. ],
-                                        [0., 0., 0., 0., 0., 0., 1.,  0.,  0. ],
-                                        [0., 0., 0., 0., 0., 0., 0.,  1.,  0. ],
-                                        [0., 0., 0., 0., 0., 0., 0.,  0.,  1. ]])
+        if METHOD == 0:
+            # The samples are randomly spaced in time, so dt varies with time and a
+            # time dependent transition matrix is necessary
+            timesteps = np.asarray(coords['time_sec'][1:]) - np.asarray(coords['time_sec'][0:-1])
+            transition_matrices = np.zeros(shape = (len(timesteps), 9, 9))
+            for i in range(len(timesteps)):
+                transition_matrices[i] = np.array([[1., 0., 0., timesteps[i], 0., 0., 0.5*(timesteps[i]**2), 0., 0.],
+                                                   [0., 1., 0., 0., timesteps[i], 0., 0., 0.5*(timesteps[i]**2), 0.],
+                                                   [0., 0., 1., 0., 0., timesteps[i], 0., 0., 0.5*(timesteps[i]**2)],
+                                                   [0., 0., 0., 1., 0., 0., timesteps[i], 0., 0.],
+                                                   [0., 0., 0., 0., 1., 0., 0., timesteps[i], 0.],
+                                                   [0., 0., 0., 0., 0., 1., 0., 0., timesteps[i]],
+                                                   [0., 0., 0., 0., 0., 0., 1., 0., 0.],
+                                                   [0., 0., 0., 0., 0., 0., 0., 1., 0.],
+                                                   [0., 0., 0., 0., 0., 0., 0., 0., 1.]])
+        
+        elif METHOD == 1:
+            # The data have been resampled so there's no need for a time-variant
+            # transition matrix
+            transition_matrices = np.array([[1., 0., 0., 1., 0., 0., 0.5, 0.,  0. ],
+                                            [0., 1., 0., 0., 1., 0., 0.,  0.5, 0. ],
+                                            [0., 0., 1., 0., 0., 1., 0.,  0.,  0.5],
+                                            [0., 0., 0., 1., 0., 0., 1.,  0.,  0. ],
+                                            [0., 0., 0., 0., 1., 0., 0.,  1.,  0. ],
+                                            [0., 0., 0., 0., 0., 1., 0.,  0.,  1. ],
+                                            [0., 0., 0., 0., 0., 0., 1.,  0.,  0. ],
+                                            [0., 0., 0., 0., 0., 0., 0.,  1.,  0. ],
+                                            [0., 0., 0., 0., 0., 0., 0.,  0.,  1. ]])
+        else:
+            print "ERROR: Cannot use acceleration with methods other than 0 or 1"
         
         # All the rest isn't influenced by the resampling
         observation_matrices = np.array([[1., 0., 0., 0., 0., 0., 0., 0., 0.],
@@ -229,7 +281,7 @@ def ApplyKalmanFilter(coords, gpx, RESAMPLE, USE_ACCELERATION, VARIANCE_SMOOTH, 
     
     
     
-    return k_coords, k_gpx, state_vars, measurements
+    return k_coords, k_gpx, state_vars, measurements, coords
 
 def SaveDataToCoordsAndGPX(coords, state_means):
     # Saving to a new coords
@@ -814,9 +866,9 @@ if False:
 # Kalman processing
 #==============================================================================
 if True:
-    k_coords, k_gpx, state_vars, measurements = ApplyKalmanFilter(coords, gpx,
-                                                                  RESAMPLE=2, 
-                                                                  USE_ACCELERATION=False,
+    k_coords, k_gpx, state_vars, measurements,coords = ApplyKalmanFilter(coords, gpx,
+                                                                  METHOD=0, 
+                                                                  USE_ACCELERATION=True,
                                                                   VARIANCE_SMOOTH=False,
                                                                   PLOT=True)
 #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
