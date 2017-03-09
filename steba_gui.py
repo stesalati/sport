@@ -10,9 +10,16 @@ from matplotlib.figure import Figure
 import steba as ste
 
 
+"""
+Documentation
 
+PyQT
+http://www.python.it/wiki/show/qttutorial/
+http://zetcode.com/gui/pyqt4/menusandtoolbars/
 
-# http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
+Plots
+http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
+"""
 
 
 class MyMplCanvas(FigureCanvas):
@@ -48,8 +55,33 @@ class MainWindow(QtGui.QMainWindow):
     
     def selectFileToOpen(self):
         filename = QtGui.QFileDialog.getOpenFileName()
-        gpx, s = ste.LoadGPX(filename, usehtml=True)
-        self.textGPXFileStructure.setHtml(s)
+        self.gpx, infos = ste.LoadGPX(filename, usehtml=True)
+        self.textGPXFileStructure.setHtml(infos)
+        return
+        
+    def Go(self):
+        # Read settings from GUI
+        track_nr = int(self.spinTrack.value())
+        segment_nr = int(self.spinSegment.value())
+        usesrtm = bool(self.checkUseSRTM.isChecked())
+        method = self.comboBoxProcessingMethod.currentIndex()
+        usea_cceleration = self.checkUseAcceleration.isChecked()
+        use_variance_smooth = self.checkUseVarianceSmooth.isChecked()
+        
+        # Parse the GPX file
+        self.gpx, self.coords, infos = ste.ParseGPX(self.gpx, track_nr, segment_nr, use_srtm_elevation=usesrtm, usehtml=True)
+        self.textOutput.setHtml(infos)
+        
+        # Kalman processing
+        self.k_coords, self.k_gpx, infos, self.state_vars, self.measurements, self.coords = ste.ApplyKalmanFilter(self.coords,
+                                                                                              self.gpx,
+                                                                                              method=method, 
+                                                                                              use_acceleration=usea_cceleration,
+                                                                                              variance_smooth=use_variance_smooth,
+                                                                                              plot=True,
+                                                                                              usehtml=True)
+        self.textOutput.append(infos)
+        
         return
 
     def __init__(self):
@@ -65,7 +97,7 @@ class MainWindow(QtGui.QMainWindow):
         go = QtGui.QAction(QtGui.QIcon("icons/go2.png"), "Go!", self)
         go.setShortcut("Ctrl+R")
         go.setStatusTip("Run analysis")
-        #go.triggered.connect(self.selectFileToOpen)
+        go.triggered.connect(self.Go)
         
         sep = QtGui.QAction(self)
         sep.setSeparator(True)
@@ -109,59 +141,57 @@ class MainWindow(QtGui.QMainWindow):
         vBox2.setSpacing(5)
         
         # Just the group label
-        label_settings = QtGui.QLabel('Settings', cWidget)
-        vBox2.addWidget(label_settings)
+        labelSettings = QtGui.QLabel('Settings', cWidget)
+        vBox2.addWidget(labelSettings)
         
         # Track/segment selection
         hBox21 = QtGui.QHBoxLayout()
-        label21 = QtGui.QLabel('Track/Segment', cWidget)
-        hBox21.addWidget(label21)
-        track = QtGui.QLineEdit(cWidget)
-        hBox21.addWidget(track)
-        segment = QtGui.QLineEdit(cWidget)
-        hBox21.addWidget(segment)
+        labelTrack = QtGui.QLabel('Track/Segment', cWidget)
+        hBox21.addWidget(labelTrack)
+        
+        self.spinTrack = QtGui.QSpinBox(cWidget)
+        self.spinTrack.setRange(0, 10)
+        self.spinTrack.setValue(0)
+        self.spinTrack.setSingleStep(1)
+        hBox21.addWidget(self.spinTrack)
+        self.spinSegment = QtGui.QSpinBox(cWidget)
+        self.spinSegment.setRange(0, 10)
+        self.spinSegment.setValue(0)
+        self.spinSegment.setSingleStep(1)
+        hBox21.addWidget(self.spinSegment)
         vBox2.addLayout(hBox21)
         
         # Use/don't use corrected altitude
-        use_corrected_altitude = QtGui.QCheckBox("Use SRTM corrected elevation", cWidget)
-        use_corrected_altitude.setChecked(False)
-        vBox2.addWidget(use_corrected_altitude)
+        self.checkUseSRTM = QtGui.QCheckBox("Use SRTM corrected elevation", cWidget)
+        self.checkUseSRTM.setChecked(False)
+        vBox2.addWidget(self.checkUseSRTM)
         
         # Choose processing method
-        hBox_method = QtGui.QHBoxLayout()
-        label_method = QtGui.QLabel('Processing method', cWidget)
-        hBox_method.addWidget(label_method)
-        comboBox_method = QtGui.QComboBox()
-        comboBox_method.addItem("Just use available data")
-        comboBox_method.addItem("Resample at 1Hz")
-        hBox_method.addWidget(comboBox_method)
-        vBox2.addLayout(hBox_method)
+        hBoxProcessingMethod = QtGui.QHBoxLayout()
+        labelProcessingMethod = QtGui.QLabel('Processing method', cWidget)
+        hBoxProcessingMethod.addWidget(labelProcessingMethod)
+        self.comboBoxProcessingMethod = QtGui.QComboBox()
+        self.comboBoxProcessingMethod.addItem("Just use available data")
+        self.comboBoxProcessingMethod.addItem("Resample at 1Hz")
+        hBoxProcessingMethod.addWidget(self.comboBoxProcessingMethod)
+        vBox2.addLayout(hBoxProcessingMethod)
         
         # Use/don't use acceleration
-        use_acceleration_in_kalman = QtGui.QCheckBox("Use acceleration in Kalman filter", cWidget)
-        use_acceleration_in_kalman.setChecked(False)
-        vBox2.addWidget(use_acceleration_in_kalman)
+        self.checkUseAcceleration = QtGui.QCheckBox("Use acceleration in Kalman filter", cWidget)
+        self.checkUseAcceleration.setChecked(False)
+        vBox2.addWidget(self.checkUseAcceleration)
         
         # Use/don't use variance smooth
-        use_variance_smooth = QtGui.QCheckBox("Use variance smooth", cWidget)
-        use_variance_smooth.setChecked(False)
-        vBox2.addWidget(use_variance_smooth)
+        self.checkUseVarianceSmooth = QtGui.QCheckBox("Use variance smooth", cWidget)
+        self.checkUseVarianceSmooth.setChecked(False)
+        vBox2.addWidget(self.checkUseVarianceSmooth)
         
         vBox_left.addLayout(vBox2)
-        
-        # 3rd vertical box, containing buttons
-        hBox3 = QtGui.QHBoxLayout()
-        hBox3.setSpacing(5)
-        
-        button1 = QtGui.QPushButton('Go!', cWidget)
-        hBox3.addWidget(button1)
-        
-        vBox_left.addLayout(hBox3)
-        
-        # 4th vertical box, containing the textual output
-        textOutput = QtGui.QTextEdit(cWidget)
-        textOutput.setReadOnly(True)
-        vBox_left.addWidget(textOutput)
+                
+        # 3rd vertical box, containing the textual output
+        self.textOutput = QtGui.QTextEdit(cWidget)
+        self.textOutput.setReadOnly(True)
+        vBox_left.addWidget(self.textOutput)
         
         hBox.addLayout(vBox_left)
         
