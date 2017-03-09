@@ -468,18 +468,28 @@ def PlotSummary(ax, s, h, dh, speed_h, speed_v, gradient):
 #==============================================================================
 # Generic functions
 #==============================================================================
-def LoadGPX(filename, track_nr, segment_nr, use_srtm_elevation):
+def LoadGPX(filename, usehtml):
     gpx_file = open(filename, 'r')
     gpx = gpxpy.parse(gpx_file)
     
-    # Show the GPX file structure
-    print "\nGPX file structure:"
-    for itra, track in enumerate(gpx.tracks):
-        print "Track {}".format(itra)
-        for iseg, segment in enumerate(track.segments):
-            info = segment.get_moving_data()
-            print "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m".format(iseg, info[0]/60., info[2])
+    if usehtml:
+        s = "GPX file structure:<br>"
+        for itra, track in enumerate(gpx.tracks):
+            s = s + "Track {}<br>".format(itra)
+            for iseg, segment in enumerate(track.segments):
+                info = segment.get_moving_data()
+                s = s + "<tab>Segment {} >>> time: {:.2f}min, distance: {:.0f}m<br>".format(iseg, info[0]/60., info[2])
+    else:
+        s = "GPX file structure:\n"
+        for itra, track in enumerate(gpx.tracks):
+            s = s + "Track {}\n".format(itra)
+            for iseg, segment in enumerate(track.segments):
+                info = segment.get_moving_data()
+                s = s + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m\n".format(iseg, info[0]/60., info[2])
     
+    return gpx, s
+            
+def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     print "\nLoading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
@@ -812,72 +822,74 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
 #==============================================================================
 # Main function
 #==============================================================================
-#def main(argv=None):
-#    if argv is None:
-#        argv = sys.argv
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
     
-print("############################ GPX VIEWER ############################\n")
-
-# Arguments
-track_nr = 0
-segment_nr = 0
-FILENAME = "ahrtal.gpx"
-# FILENAME = "casa-lavoro1.gpx"
-# FILENAME = "casa-lavoro2.gpx"
-
-if len(sys.argv) >= 2:
-    if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
-        FILENAME = sys.argv[1]
-        if len(sys.argv) == 4:
-            track_nr = int(sys.argv[2])
-            segment_nr = int(sys.argv[3])
-else:
-    print "No GPX file provided, the default file will be loaded."
-
-# Control constants
-VERBOSE = False
-
-# Loading .gpx file
-print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
-gpx, coords = LoadGPX(FILENAME, track_nr, segment_nr, False)
-
-#==============================================================================
-# Homemade processing
-#==============================================================================
-if False:
-    lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
-    h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
+    print("############################ GPX VIEWER ############################\n")
     
-    fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
-    ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
+    # Arguments
+    track_nr = 0
+    segment_nr = 0
+    FILENAME = "ahrtal.gpx"
+    # FILENAME = "casa-lavoro1.gpx"
+    # FILENAME = "casa-lavoro2.gpx"
     
-    data = np.ones((len(lat_cleaned),2))
-    data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
-    data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-    onmapdata = {'data': data,
-                 'sides': (0, 1),
-                 'palette': ('blue','red')}
-    balloondata = {'distance': s_cleaned,
-                   'elevation': h_filtered,
-                   'speed': speed_h}
-    PlotOnMap(np.vstack((lat_cleaned, lon_cleaned)).T, None, onmapdata=onmapdata, balloondata=balloondata, rdp_reduction=False)
+    if len(sys.argv) >= 2:
+        if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
+            FILENAME = sys.argv[1]
+            if len(sys.argv) == 4:
+                track_nr = int(sys.argv[2])
+                segment_nr = int(sys.argv[3])
+    else:
+        print "No GPX file provided, the default file will be loaded."
+    
+    # Control constants
+    VERBOSE = False
+    
+    # Loading .gpx file
+    print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
+    gpx, outputstring = LoadGPX(FILENAME, usehtml=False)
+    print outputstring
+    gpx, coords = ParseGPX(gpx, track_nr, segment_nr, False)
+    
+    #==============================================================================
+    # Homemade processing
+    #==============================================================================
+    if False:
+        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
+        h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
+        
+        fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
+        ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
+        
+        data = np.ones((len(lat_cleaned),2))
+        data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
+        data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
+        onmapdata = {'data': data,
+                     'sides': (0, 1),
+                     'palette': ('blue','red')}
+        balloondata = {'distance': s_cleaned,
+                       'elevation': h_filtered,
+                       'speed': speed_h}
+        PlotOnMap(np.vstack((lat_cleaned, lon_cleaned)).T, None, onmapdata=onmapdata, balloondata=balloondata, rdp_reduction=False)
+    
+    #==============================================================================
+    # Kalman processing
+    #==============================================================================
+    if True:
+        k_coords, k_gpx, state_vars, measurements,coords = ApplyKalmanFilter(coords, gpx,
+                                                                      METHOD=0, 
+                                                                      USE_ACCELERATION=False,
+                                                                      VARIANCE_SMOOTH=False,
+                                                                      PLOT=True)
+    #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
+    #                   'elevation': np.asarray(k_coords['ele']),
+    #                   'speed': None}
+    #    PlotOnMap(np.vstack((k_coords['lat'], k_coords['lon'])).T,
+    #              np.vstack((coords['lat'], coords['lon'])).T,
+    #              onmapdata=None, balloondata=balloondata, rdp_reduction=False)
 
-#==============================================================================
-# Kalman processing
-#==============================================================================
-if True:
-    k_coords, k_gpx, state_vars, measurements,coords = ApplyKalmanFilter(coords, gpx,
-                                                                  METHOD=0, 
-                                                                  USE_ACCELERATION=True,
-                                                                  VARIANCE_SMOOTH=False,
-                                                                  PLOT=True)
-#    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
-#                   'elevation': np.asarray(k_coords['ele']),
-#                   'speed': None}
-#    PlotOnMap(np.vstack((k_coords['lat'], k_coords['lon'])).T,
-#              np.vstack((coords['lat'], coords['lon'])).T,
-#              onmapdata=None, balloondata=balloondata, rdp_reduction=False)
 
-
-#if __name__ == "__main__":
-#    main()
+if __name__ == "__main__":
+    main()
