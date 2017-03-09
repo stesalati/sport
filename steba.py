@@ -47,7 +47,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
     # others are just tries
     
     HTML_FILENAME = "osm_kalman.html"
-    infos = ("<br>" if usehtml else "\n")
+    infos = ""
     
     # Method is used to artificially increase the number of points and see how
     # the Kalman filter behaves in between breakpoints
@@ -279,12 +279,11 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
         # Stats
         # print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
         # print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
-        
-    # Saving back to the coords dataframe and gpx
-    k_coords, k_gpx, infos_bit = SaveDataToCoordsAndGPX(coords, state_means, usehtml=usehtml)
-    infos = infos + infos_bit
-    
-    return k_coords, k_gpx, infos, state_vars, measurements, coords
+            
+    return coords, measurements, state_means, state_vars, infos
+
+def PlotKalmanFilterResults():
+    return
 
 def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     # Saving to a new coords
@@ -326,9 +325,11 @@ def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     new_gpx.add_missing_speeds()
     
     infos = ("<br>" if usehtml else "\n")
+    infos = infos + ("<br>" if usehtml else "\n")
     infos = "STATS AFTER FILTERING"
     infos = infos + ("<br>" if usehtml else "\n")
-    infos = infos + GiveStats(new_gpx, track_nr=0, segment_nr=0, usehtml=False)
+    # infos = infos + GiveStats(new_gpx, track_nr=0, segment_nr=0, usehtml=False)
+    infos = infos + GiveStats(new_gpx.tracks[0].segments[0], usehtml=False)
     
     #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
     
@@ -495,8 +496,7 @@ def LoadGPX(filename, usehtml):
     return gpx, s
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
-    infos = ("<br>" if usehtml else "\n")
-    infos = infos + "Loading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
+    infos = "Loading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
     infos = infos + ("<br>" if usehtml else "\n")
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
@@ -512,7 +512,8 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
     infos = infos + ("<br>" if usehtml else "\n")
     infos = infos + "STATS BASED ON THE GPX FILE"
     infos = infos + ("<br>" if usehtml else "\n")
-    infos = infos + GiveStats(gpx, track_nr, segment_nr, usehtml)
+    # infos = infos + GiveStats(gpx, track_nr, segment_nr, usehtml)
+    infos = infos + GiveStats(segment, usehtml)
     
     # https://github.com/tkrajina/srtm.py
     infos = infos + ("<br>" if usehtml else "\n")
@@ -530,11 +531,10 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
             
             infos = infos + "SRTM elevation correction done."
             infos = infos + ("<br>" if usehtml else "\n")
-            
-            # infos = infos + "STATS BASED ON THE GPX FILE AFTER SRTM CORRECTION"
-            #print segment.get_uphill_downhill()
-            #print segment.get_elevation_extremes()
-                  
+            infos = infos + ("<br>" if usehtml else "\n")
+            infos = infos + "STATS BASED ON THE GPX FILE AFTER SRTM CORRECTION"
+            infos = infos + GiveStats(gpx.tracks[0].segments[0], usehtml=usehtml)
+            infos = infos + ("<br>" if usehtml else "\n")                  
         except:
             infos = infos + "SRTM correction failed for some reason, probably a shitty proxy."
             infos = infos + ("<br>" if usehtml else "\n")
@@ -583,8 +583,8 @@ def MyTotalDistance(lat, lon):
     s = np.sum(ds)
     return s
     
-def GiveStats(gpx, track_nr, segment_nr, usehtml):
-    info = gpx.tracks[track_nr].segments[segment_nr].get_moving_data()
+def GiveStats(segment, usehtml):
+    info = segment.get_moving_data()
     m, s = divmod(info[0], 60)
     h, m = divmod(m, 60)
     # string = "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
@@ -595,11 +595,11 @@ def GiveStats(gpx, track_nr, segment_nr, usehtml):
     infos = infos + "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[3]/1000.)
     infos = infos + ("<br>" if usehtml else "\n")
     
-    info = gpx.tracks[track_nr].segments[segment_nr].get_elevation_extremes()
+    info = segment.get_elevation_extremes()
     infos = infos + "Elevation   >>> {:.0f}m <---> {:.0f}m".format(info[0], info[1])
     infos = infos + ("<br>" if usehtml else "\n")
     
-    info = gpx.tracks[track_nr].segments[segment_nr].get_uphill_downhill()
+    info = segment.get_uphill_downhill()
     infos = infos + "Total climb >>> +{:.0f}m, -{:.0f}m".format(info[0], info[1])
     infos = infos + ("<br>" if usehtml else "\n")
     
@@ -863,9 +863,6 @@ def main(argv=None):
     else:
         print "No GPX file provided, the default file will be loaded."
     
-    # Control constants
-    VERBOSE = False
-    
     # Loading .gpx file
     print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
     gpx, infos = LoadGPX(FILENAME, usehtml=False)
@@ -877,7 +874,7 @@ def main(argv=None):
     # Homemade processing
     #==============================================================================
     if False:
-        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE)
+        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE=False)
         h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
         
         fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
@@ -898,13 +895,17 @@ def main(argv=None):
     # Kalman processing
     #==============================================================================
     if True:
-        k_coords, k_gpx, infos, state_vars, measurements, coords = ApplyKalmanFilter(coords, gpx,
-                                                                                     method=0, 
-                                                                                     use_acceleration=False,
-                                                                                     variance_smooth=False,
-                                                                                     plot=True,
-                                                                                     usehtml=False)
+        coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
+                                                                                 method=0, 
+                                                                                 use_acceleration=False,
+                                                                                 variance_smooth=False,
+                                                                                 plot=True,
+                                                                                 usehtml=False)
         print infos
+        
+        new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means, usehtml=False)
+        print infos
+        
     #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
     #                   'elevation': np.asarray(k_coords['ele']),
     #                   'speed': None}

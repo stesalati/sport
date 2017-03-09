@@ -41,15 +41,23 @@ class MyMplCanvas(FigureCanvas):
 
     def compute_initial_figure(self):
         pass
-    
-class MyStaticMplCanvas(MyMplCanvas):
-    """Simple canvas with a sine plot."""
+        
+class ElevationPlot(MyMplCanvas):
+    # Plot original/corrected altitude profile
+
+    def __init__(self, *args, **kwargs):
+        MyMplCanvas.__init__(self, *args, **kwargs)
 
     def compute_initial_figure(self):
-        t = arange(0.0, 3.0, 0.01)
-        s = sin(2*pi*t)
-        self.axes.plot(t, s)
+        self.axes.plot([0, 1, 2, 3], [1, 2, 0, 4], 'r')
 
+    def update_figure(self, measurements, state_means):
+        self.axes.cla()
+        self.axes.plot(measurements[:,2], color="0.5", linestyle="None", marker=".")
+        self.axes.plot(state_means[:,2], color="r", linestyle="-", marker="None")
+        self.axes.legend(['Measured', 'Estimated'])
+        self.axes.grid(True)
+        self.draw()
 
 class MainWindow(QtGui.QMainWindow):
     
@@ -73,13 +81,18 @@ class MainWindow(QtGui.QMainWindow):
         self.textOutput.setHtml(infos)
         
         # Kalman processing
-        self.k_coords, self.k_gpx, infos, self.state_vars, self.measurements, self.coords = ste.ApplyKalmanFilter(self.coords,
-                                                                                              self.gpx,
-                                                                                              method=method, 
-                                                                                              use_acceleration=usea_cceleration,
-                                                                                              variance_smooth=use_variance_smooth,
-                                                                                              plot=True,
-                                                                                              usehtml=True)
+        self.coords, self.measurements, self.state_means, self.state_vars, infos = ste.ApplyKalmanFilter(self.coords,
+                                                                                        self.gpx,
+                                                                                        method=method, 
+                                                                                        use_acceleration=usea_cceleration,
+                                                                                        variance_smooth=use_variance_smooth,
+                                                                                        plot=True,
+                                                                                        usehtml=True)
+        self.textOutput.append(infos)
+        
+        self.plotElevation.update_figure(self.measurements, self.state_means)
+        
+        self.new_coords, self.new_gpx, infos = ste.SaveDataToCoordsAndGPX(self.coords, self.state_means, usehtml=True)
         self.textOutput.append(infos)
         
         return
@@ -186,6 +199,11 @@ class MainWindow(QtGui.QMainWindow):
         self.checkUseVarianceSmooth.setChecked(False)
         vBox2.addWidget(self.checkUseVarianceSmooth)
         
+        # Use/don't reduction algorithm for plotting on the map
+        self.checkUseRDP = QtGui.QCheckBox("Allow using RDP to reduce number of points displayed", cWidget)
+        self.checkUseRDP.setChecked(False)
+        vBox2.addWidget(self.checkUseRDP)
+        
         vBox_left.addLayout(vBox2)
                 
         # 3rd vertical box, containing the textual output
@@ -200,8 +218,8 @@ class MainWindow(QtGui.QMainWindow):
         vBox_right.setSpacing(20)
         
         # Plot area        
-        plot = MyStaticMplCanvas(cWidget, width=5, height=4, dpi=100)
-        vBox_right.addWidget(plot)
+        self.plotElevation = ElevationPlot(cWidget, width=5, height=4, dpi=100)
+        vBox_right.addWidget(self.plotElevation)
         
         hBox.addLayout(vBox_right)
 
