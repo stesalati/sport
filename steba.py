@@ -34,7 +34,7 @@ from rdp import rdp
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PLOT):
+def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, plot, usehtml):
     # Documentation
     # https://pykalman.github.io
     # https://github.com/pykalman/pykalman/tree/master/examples/standard
@@ -47,25 +47,28 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
     # others are just tries
     
     HTML_FILENAME = "osm_kalman.html"
+    infos = ("<br>" if usehtml else "\n")
     
     # Method is used to artificially increase the number of points and see how
     # the Kalman filter behaves in between breakpoints
     orig_measurements = coords[['lat','lon','ele']].values
-    if not METHOD:
+    if not method:
         # Method 0: just use the data available
         # Create the "measurement" array
         measurements = coords[['lat','lon','ele']].values
-        print "\nNumber of samples: {}".format(len(measurements))
+        infos = infos + "Number of samples: {}".format(len(measurements))
+        infos = infos + ("<br>" if usehtml else "\n")
         
-    elif METHOD == 1:
+    elif method == 1:
         # Method 1: resample at T=1s and fill the missing values with NaNs
         coords = coords.resample('1S').asfreq()
         # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
-        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + ("<br>" if usehtml else "\n")
         measurements = np.ma.masked_invalid(measurements)
         
-    elif METHOD == 2:
+    elif method == 2:
         # Method 2: resample but fill NaNs with interpolation, there's no need
         # to mask values this way
         # http://pandas.pydata.org/pandas-docs/stable/generated/pandas.Series.interpolate.html
@@ -73,9 +76,10 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
         coords = coords.interpolate(method='linear')
         # Create the "measurement" array
         measurements = coords[['lat','lon','ele']].values
-        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + ("<br>" if usehtml else "\n")
         
-    elif METHOD == 3:
+    elif method == 3:
         # Method 3: fill the gaps between points too far away with NaNs. It's
         # different from resampling as T is not constant
         for i in range(0,len(coords)-1):
@@ -96,7 +100,8 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
         coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
         # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
-        print "\nNumber of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        infos = infos + ("<br>" if usehtml else "\n")
         measurements = np.ma.masked_invalid(measurements)
         
     # Setup the Kalman filter & smoother
@@ -109,8 +114,8 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
            'horizontal_acceleration': 1e-6 * 1000,
            'elevation_acceleration': 1e-6 * 1000}
         
-    if not USE_ACCELERATION:
-        if METHOD == 0 or METHOD == 3:
+    if not use_acceleration:
+        if method == 0 or method == 3:
             # The samples are randomly spaced in time, so dt varies with time and a
             # time dependent transition matrix is necessary
             timesteps = np.asarray(coords['time_sec'][1:]) - np.asarray(coords['time_sec'][0:-1])
@@ -146,7 +151,7 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
                                             cov['horizontal_velocity'], cov['horizontal_velocity'], cov['elevation_velocity']])**2
         
     else:
-        if METHOD == 0:
+        if method == 0:
             # The samples are randomly spaced in time, so dt varies with time and a
             # time dependent transition matrix is necessary
             timesteps = np.asarray(coords['time_sec'][1:]) - np.asarray(coords['time_sec'][0:-1])
@@ -162,7 +167,7 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
                                                    [0., 0., 0., 0., 0., 0., 0., 1., 0.],
                                                    [0., 0., 0., 0., 0., 0., 0., 0., 1.]])
         
-        elif METHOD == 1:
+        elif method == 1:
             # The data have been resampled so there's no need for a time-variant
             # transition matrix
             transition_matrices = np.array([[1., 0., 0., 1., 0., 0., 0.5, 0.,  0. ],
@@ -210,7 +215,7 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
     # removed are those that were already masked, that, being artificially
     # added NaNs, the result doesn't change much.
     THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-    if VARIANCE_SMOOTH:
+    if variance_smooth:
         coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
         coord_var_r = np.median(np.sort(coord_var)[:-20:-1]) / np.mean(coord_var)
         print "\nANALYZING RESULTING VARIANCE"
@@ -225,10 +230,10 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
             state_means2, state_vars2 = kf.smooth(measurements)
             coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
         else:
-            # ... then turn off VARIANCE_SMOOTH cos it's not worth
-            VARIANCE_SMOOTH = False
+            # ... then turn off variance_smooth cos it's not worth
+            variance_smooth = False
     
-    if PLOT:
+    if plot:
         # Plot original/corrected map
         lat_center = (np.max(state_means[:,0]) + np.min(state_means[:,0])) / 2.
         lon_center = (np.max(state_means[:,1]) + np.min(state_means[:,1])) / 2.
@@ -237,7 +242,7 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
                                              color='#666666', weight = 4, opacity=1))
         map_osm.add_children(folium.PolyLine(state_means[:,:2], 
                                              color='#FF0000', weight = 4, opacity=1))
-        if VARIANCE_SMOOTH:
+        if variance_smooth:
             map_osm.add_children(folium.PolyLine(state_means2[:,:2], 
                                                  color='#00FF00', weight = 4, opacity=1))
         
@@ -261,10 +266,10 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
         fig_alt.show()
         
         # Plot coordinates variance
-        if VARIANCE_SMOOTH:
+        if variance_smooth:
             fig_coordvar, ax_coordvar = plt.subplots(2,1)
             ax_coordvar[0].plot(coord_var, color="r", linestyle="-", marker="None")
-            if VARIANCE_SMOOTH:
+            if variance_smooth:
                 ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
             ax_coordvar[0].grid(True)
             ax_coordvar[1].hist(np.log10(coord_var), bins=100)
@@ -276,14 +281,12 @@ def ApplyKalmanFilter(coords, gpx, METHOD, USE_ACCELERATION, VARIANCE_SMOOTH, PL
         # print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
         
     # Saving back to the coords dataframe and gpx
-    k_coords, k_gpx = SaveDataToCoordsAndGPX(coords, state_means)
+    k_coords, k_gpx, infos_bit = SaveDataToCoordsAndGPX(coords, state_means, usehtml=usehtml)
+    infos = infos + infos_bit
     
-    
-    
-    
-    return k_coords, k_gpx, state_vars, measurements, coords
+    return k_coords, k_gpx, infos, state_vars, measurements, coords
 
-def SaveDataToCoordsAndGPX(coords, state_means):
+def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     # Saving to a new coords
     new_coords = pd.DataFrame([
                   {'lat': state_means[i,0],
@@ -322,12 +325,14 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     new_gpx.tracks[0].segments[0].points[-1].speed = 0.
     new_gpx.add_missing_speeds()
     
-    print "\nSTATS AFTER FILTERING"
-    GiveStats(new_gpx)
+    infos = ("<br>" if usehtml else "\n")
+    infos = "STATS AFTER FILTERING"
+    infos = infos + ("<br>" if usehtml else "\n")
+    infos = infos + GiveStats(new_gpx, track_nr=0, segment_nr=0, usehtml=False)
     
     #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
     
-    return new_coords, new_gpx
+    return new_coords, new_gpx, infos
 
 
 #==============================================================================
@@ -489,8 +494,10 @@ def LoadGPX(filename, usehtml):
     
     return gpx, s
             
-def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
-    print "\nLoading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
+def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
+    infos = ("<br>" if usehtml else "\n")
+    infos = infos + "Loading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
+    infos = infos + ("<br>" if usehtml else "\n")
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
             {'idx': i,
@@ -502,10 +509,13 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
-    print "\nSTATS BASED ON THE GPX FILE"
-    GiveStats(gpx)
+    infos = infos + ("<br>" if usehtml else "\n")
+    infos = infos + "STATS BASED ON THE GPX FILE"
+    infos = infos + ("<br>" if usehtml else "\n")
+    infos = infos + GiveStats(gpx, track_nr, segment_nr, usehtml)
     
     # https://github.com/tkrajina/srtm.py
+    infos = infos + ("<br>" if usehtml else "\n")
     if use_srtm_elevation:
         try:
             # Delete elevation data (it's already saved in coords)
@@ -517,12 +527,17 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
             elevation_data.add_elevations(gpx, smooth=True)
             coords['srtm'] = [p.elevation for p in gpx.tracks[0].segments[0].points]
             coords[['ele','srtm']].plot(title='Elevation')
-            print "\nStats based on SRTM corrected elevation"
-            print segment.get_uphill_downhill()
-            print segment.get_elevation_extremes()
+            
+            infos = infos + "SRTM elevation correction done."
+            infos = infos + ("<br>" if usehtml else "\n")
+            
+            # infos = infos + "STATS BASED ON THE GPX FILE AFTER SRTM CORRECTION"
+            #print segment.get_uphill_downhill()
+            #print segment.get_elevation_extremes()
                   
         except:
-            print "SRTM not working for some reason, probably a shitty proxy."
+            infos = infos + "SRTM correction failed for some reason, probably a shitty proxy."
+            infos = infos + ("<br>" if usehtml else "\n")
     
     # Round sampling points at 1s. The error introduced should be negligible
     # the processing would be simplified
@@ -533,7 +548,7 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     gpx.add_missing_speeds()
     coords['speed'] = [p.speed for p in gpx.tracks[track_nr].segments[segment_nr].points]
     
-    return gpx, coords
+    return gpx, coords, infos
 
 def HaversineDistance(lat_deg, lon_deg):
     # http://www.movable-type.co.uk/scripts/latlong.html
@@ -568,23 +583,27 @@ def MyTotalDistance(lat, lon):
     s = np.sum(ds)
     return s
     
-def GiveStats(gpx):
-    info = gpx.tracks[0].segments[0].get_moving_data()
+def GiveStats(gpx, track_nr, segment_nr, usehtml):
+    info = gpx.tracks[track_nr].segments[segment_nr].get_moving_data()
     m, s = divmod(info[0], 60)
     h, m = divmod(m, 60)
-    # print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
-    print "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[2]/1000.)
+    # string = "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
+    infos = "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[2]/1000.)
+    infos = infos + ("<br>" if usehtml else "\n")
     m, s = divmod(info[2], 60)
     h, m = divmod(m, 60)
-    print "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[3]/1000.)
+    infos = infos + "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km".format(h, m, s, info[3]/1000.)
+    infos = infos + ("<br>" if usehtml else "\n")
     
-    info = gpx.tracks[0].segments[0].get_elevation_extremes()
-    print "Elevation   >>> {:.0f}m <---> {:.0f}m".format(info[0], info[1])
+    info = gpx.tracks[track_nr].segments[segment_nr].get_elevation_extremes()
+    infos = infos + "Elevation   >>> {:.0f}m <---> {:.0f}m".format(info[0], info[1])
+    infos = infos + ("<br>" if usehtml else "\n")
     
-    info = gpx.tracks[0].segments[0].get_uphill_downhill()
-    print "Total climb >>> +{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    info = gpx.tracks[track_nr].segments[segment_nr].get_uphill_downhill()
+    infos = infos + "Total climb >>> +{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    infos = infos + ("<br>" if usehtml else "\n")
     
-    return
+    return infos
     
 def FindQuadrant(deg):
     n = np.zeros(len(deg))
@@ -849,9 +868,10 @@ def main(argv=None):
     
     # Loading .gpx file
     print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
-    gpx, outputstring = LoadGPX(FILENAME, usehtml=False)
-    print outputstring
-    gpx, coords = ParseGPX(gpx, track_nr, segment_nr, False)
+    gpx, infos = LoadGPX(FILENAME, usehtml=False)
+    print infos
+    gpx, coords, infos = ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation=False, usehtml=False)
+    print infos
     
     #==============================================================================
     # Homemade processing
@@ -878,11 +898,13 @@ def main(argv=None):
     # Kalman processing
     #==============================================================================
     if True:
-        k_coords, k_gpx, state_vars, measurements,coords = ApplyKalmanFilter(coords, gpx,
-                                                                      METHOD=0, 
-                                                                      USE_ACCELERATION=False,
-                                                                      VARIANCE_SMOOTH=False,
-                                                                      PLOT=True)
+        k_coords, k_gpx, infos, state_vars, measurements, coords = ApplyKalmanFilter(coords, gpx,
+                                                                                     method=0, 
+                                                                                     use_acceleration=False,
+                                                                                     variance_smooth=False,
+                                                                                     plot=True,
+                                                                                     usehtml=False)
+        print infos
     #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
     #                   'elevation': np.asarray(k_coords['ele']),
     #                   'speed': None}
