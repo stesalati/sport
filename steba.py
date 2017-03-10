@@ -14,7 +14,7 @@ import numpy as np
 from scipy import signal, fftpack
 import matplotlib.pyplot as plt
 from matplotlib import patches
-from matplotlib.pyplot import ion, show
+# from matplotlib.pyplot import ion, show
 import gpxpy
 import datetime
 import mplleaflet
@@ -255,15 +255,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
         elif platform.system() == 'Windows':
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
-                
-        # Plot original/corrected altitude profile
-        fig_alt, ax_alt = plt.subplots()
-        #ax_alt.plot(coords['ele'], color='0.5', marker=".")
-        ax_alt.plot(measurements[:,2], color="0.5", linestyle="None", marker=".")
-        ax_alt.plot(state_means[:,2], color="r", linestyle="-", marker="None")
-        ax_alt.legend(['Measured', 'Estimated'])
-        ax_alt.grid(True)
-        fig_alt.show()
         
         # Plot coordinates variance
         if variance_smooth:
@@ -282,9 +273,20 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
             
     return coords, measurements, state_means, state_vars, infos
 
-def PlotKalmanFilterResults():
-    return
-
+def PlotElevation(ax, measurements, state_means):
+    distance = np.cumsum(HaversineDistance(np.asarray(state_means[:,0]), np.asarray(state_means[:,1])))
+    distance = np.hstack(([0.], distance))
+    ax.cla()
+    ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
+    ax.plot(distance, state_means[:,2], color="r", linestyle="-", marker="None")
+    ax.set_xlabel("Distance (m)")
+    ax.set_ylabel("Elevation (m)")
+    l = ax.legend(['Measured', 'Estimated'])
+    ltext  = l.get_texts()
+    plt.setp(ltext, fontsize='small')
+    ax.grid(True)
+    return ax
+    
 def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     # Saving to a new coords
     new_coords = pd.DataFrame([
@@ -328,12 +330,41 @@ def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     infos = infos + ("<br>" if usehtml else "\n")
     infos = "STATS AFTER FILTERING"
     infos = infos + ("<br>" if usehtml else "\n")
-    # infos = infos + GiveStats(new_gpx, track_nr=0, segment_nr=0, usehtml=False)
     infos = infos + GiveStats(new_gpx.tracks[0].segments[0], usehtml=False)
     
     #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
     
     return new_coords, new_gpx, infos
+    
+def PlotSpeed(ax, gpx_segment):   
+    # Compute speed and extract speed from gpx segment
+    # (the speed is better this way, as it's computed in 3D and not only 2D, I think)
+    coords = pd.DataFrame([
+            {'idx': i,
+             'lat': p.latitude,
+             'lon': p.longitude,
+             'ele': p.elevation,
+             'speed': p.speed,
+             'time': p.time,
+             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(gpx_segment.points)])
+    coords.set_index('time', drop = True, inplace = True)
+    coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
+    
+    distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
+    distance = np.hstack(([0.], distance))
+        
+    ax.cla()
+    #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
+    ax.plot(distance, coords['speed'], color="r", linestyle="-", marker="None")
+    ax.set_xlabel("Distance (m)")
+    ax.set_ylabel("Speed (m/s)")
+    #ax.legend(['Measured', 'Estimated'])
+    l = ax.legend(['Estimated'])
+    ltext  = l.get_texts()
+    plt.setp(ltext, fontsize='small')
+    ax.grid(True)
+    
+    return ax
 
 
 #==============================================================================
@@ -477,23 +508,29 @@ def PlotSummary(ax, s, h, dh, speed_h, speed_v, gradient):
 def LoadGPX(filename, usehtml):
     gpx_file = open(filename, 'r')
     gpx = gpxpy.parse(gpx_file)
+
+    Nsegments = 0
+    id_longest_track = 0
+    id_longest_segment = 0
+    length_longest_segment = 0
+    infos = "GPX file structure:"
+    infos = infos + ("<br>" if usehtml else "\n")
+    for itra, track in enumerate(gpx.tracks):
+        infos = infos + "Track {}".format(itra)
+        infos = infos + ("<br>" if usehtml else "\n")
+        # Check if this is the track with more segments
+        Nsegments = len(track.segments) if len(track.segments)>Nsegments else Nsegments
+        for iseg, segment in enumerate(track.segments):
+            # Keep track of the longest segment
+            if len(segment.points) > length_longest_segment:
+                length_longest_segment = len(segment.points)
+                id_longest_track = itra
+                id_longest_segment = iseg
+            info = segment.get_moving_data()
+            infos = infos + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m".format(iseg, info[0]/60., info[2])
+            infos = infos + ("<br>" if usehtml else "\n")
     
-    if usehtml:
-        s = "GPX file structure:<br>"
-        for itra, track in enumerate(gpx.tracks):
-            s = s + "Track {}<br>".format(itra)
-            for iseg, segment in enumerate(track.segments):
-                info = segment.get_moving_data()
-                s = s + "<tab>Segment {} >>> time: {:.2f}min, distance: {:.0f}m<br>".format(iseg, info[0]/60., info[2])
-    else:
-        s = "GPX file structure:\n"
-        for itra, track in enumerate(gpx.tracks):
-            s = s + "Track {}\n".format(itra)
-            for iseg, segment in enumerate(track.segments):
-                info = segment.get_moving_data()
-                s = s + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m\n".format(iseg, info[0]/60., info[2])
-    
-    return gpx, s
+    return gpx, (id_longest_track, id_longest_segment), len(gpx.tracks), Nsegments, infos
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
     infos = "Loading track[{}] >>> segment [{}]".format(track_nr, segment_nr)
@@ -516,8 +553,8 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation, usehtml):
     infos = infos + GiveStats(segment, usehtml)
     
     # https://github.com/tkrajina/srtm.py
-    infos = infos + ("<br>" if usehtml else "\n")
     if use_srtm_elevation:
+        infos = infos + ("<br>" if usehtml else "\n")
         try:
             # Delete elevation data (it's already saved in coords)
             for p in gpx.tracks[0].segments[0].points:
@@ -596,7 +633,7 @@ def GiveStats(segment, usehtml):
     infos = infos + ("<br>" if usehtml else "\n")
     
     info = segment.get_elevation_extremes()
-    infos = infos + "Elevation   >>> {:.0f}m <---> {:.0f}m".format(info[0], info[1])
+    infos = infos + "Elevation   >>> {:.0f}m - {:.0f}m".format(info[0], info[1])
     infos = infos + ("<br>" if usehtml else "\n")
     
     info = segment.get_uphill_downhill()
@@ -851,8 +888,8 @@ def main(argv=None):
     track_nr = 0
     segment_nr = 0
     FILENAME = "ahrtal.gpx"
-    # FILENAME = "casa-lavoro1.gpx"
-    # FILENAME = "casa-lavoro2.gpx"
+    #FILENAME = "casa-lavoro1.gpx"
+    #FILENAME = "casa-lavoro2.gpx"
     
     if len(sys.argv) >= 2:
         if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
@@ -865,7 +902,7 @@ def main(argv=None):
     
     # Loading .gpx file
     print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
-    gpx, infos = LoadGPX(FILENAME, usehtml=False)
+    gpx, longest_traseg, Ntracks, Nsegments, infos = LoadGPX(FILENAME, usehtml=False)
     print infos
     gpx, coords, infos = ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation=False, usehtml=False)
     print infos
@@ -899,19 +936,28 @@ def main(argv=None):
                                                                                  method=0, 
                                                                                  use_acceleration=False,
                                                                                  variance_smooth=False,
-                                                                                 plot=True,
+                                                                                 plot=False,
                                                                                  usehtml=False)
         print infos
         
-        new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means, usehtml=False)
+        new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means, usehtml=False)        
         print infos
         
-    #    balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(k_coords['lat']), np.asarray(k_coords['lon']))),
-    #                   'elevation': np.asarray(k_coords['ele']),
-    #                   'speed': None}
-    #    PlotOnMap(np.vstack((k_coords['lat'], k_coords['lon'])).T,
-    #              np.vstack((coords['lat'], coords['lon'])).T,
-    #              onmapdata=None, balloondata=balloondata, rdp_reduction=False)
+        # Plot original/corrected altitude profile
+        fig_alt, ax_alt = plt.subplots()
+        ax_alt = PlotElevation(ax_alt, measurements, state_means)
+        
+        # Plot corrected speed
+        fig_speed, ax_speed = plt.subplots()
+        ax_speed = PlotSpeed(ax_speed, new_gpx.tracks[0].segments[0])
+        
+        # Plot
+        balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
+                       'elevation': np.asarray(new_coords['ele']),
+                       'speed': None}
+        PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
+                  np.vstack((coords['lat'], coords['lon'])).T,
+                  onmapdata=None, balloondata=balloondata, rdp_reduction=False)
 
 
 if __name__ == "__main__":
