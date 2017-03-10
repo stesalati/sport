@@ -1,14 +1,9 @@
-#!/usr/bin/python
-
 import sys
 from PyQt4 import QtGui, QtCore
-#from matplotlib.backends import qt_compat
-from numpy import arange, sin, pi
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
+import numpy as np
 import steba as ste
-
 
 """
 Documentation
@@ -21,13 +16,18 @@ Plots
 http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
 """
 
+FONTSIZE = 8
+PLOT_FONTSIZE = 9
 
 class MyMplCanvas(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(111)
+        self.axes = fig.add_subplot(211)
+        self.axes_bottom = fig.add_subplot(212)
+        fig.tight_layout()
+        fig.set_facecolor("w")
 
         self.compute_initial_figure()
 
@@ -44,70 +44,92 @@ class MyMplCanvas(FigureCanvas):
         
 class ElevationPlot(MyMplCanvas):
     # Plot original/corrected altitude profile
-
     def __init__(self, *args, **kwargs):
         MyMplCanvas.__init__(self, *args, **kwargs)
 
     def compute_initial_figure(self):
-        self.axes.plot([0, 1, 2, 3], [1, 2, 0, 4], 'r')
+        self.axes.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.axes.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
+        self.axes.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.axes.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+        self.axes_bottom.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
+        self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
 
-    def update_figure(self, measurements, state_means):
-        self.axes.cla()
-        self.axes.plot(measurements[:,2], color="0.5", linestyle="None", marker=".")
-        self.axes.plot(state_means[:,2], color="r", linestyle="-", marker="None")
-        self.axes.legend(['Measured', 'Estimated'])
-        self.axes.grid(True)
+    def update_figure(self, measurements, state_means, segment):
+        self.axes = ste.PlotElevation(self.axes, measurements, state_means)
+        self.axes_bottom = ste.PlotSpeed(self.axes_bottom, segment)
         self.draw()
 
 class MainWindow(QtGui.QMainWindow):
     
     def selectFileToOpen(self):
+        self.textGPXFileStructure.clear()
         filename = QtGui.QFileDialog.getOpenFileName()
-        self.gpx, infos = ste.LoadGPX(filename, usehtml=True)
-        self.textGPXFileStructure.setHtml(infos)
+        self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename, usehtml=False)        
+        self.spinTrack.setRange(0, Ntracks-1)
+        self.spinTrack.setValue(longest_traseg[0])
+        self.spinSegment.setRange(0, Nsegments-1)
+        self.spinSegment.setValue(longest_traseg[1])
+        self.textGPXFileStructure.setText(infos)
         return
         
     def Go(self):
         # Read settings from GUI
-        track_nr = int(self.spinTrack.value())
-        segment_nr = int(self.spinSegment.value())
-        usesrtm = bool(self.checkUseSRTM.isChecked())
-        method = self.comboBoxProcessingMethod.currentIndex()
-        usea_cceleration = self.checkUseAcceleration.isChecked()
         use_variance_smooth = self.checkUseVarianceSmooth.isChecked()
         
         # Parse the GPX file
-        self.gpx, self.coords, infos = ste.ParseGPX(self.gpx, track_nr, segment_nr, use_srtm_elevation=usesrtm, usehtml=True)
-        self.textOutput.setHtml(infos)
+        gpx, coords, infos = ste.ParseGPX(self.rawgpx,
+                                          track_nr=int(self.spinTrack.value()),
+                                          segment_nr=int(self.spinSegment.value()),
+                                          use_srtm_elevation=bool(self.checkUseSRTM.isChecked()),
+                                          usehtml=False)
+        self.textOutput.setText(infos)
         
         # Kalman processing
-        self.coords, self.measurements, self.state_means, self.state_vars, infos = ste.ApplyKalmanFilter(self.coords,
-                                                                                        self.gpx,
-                                                                                        method=method, 
-                                                                                        use_acceleration=usea_cceleration,
-                                                                                        variance_smooth=use_variance_smooth,
-                                                                                        plot=True,
-                                                                                        usehtml=True)
+        coords, measurements, state_means, state_vars, infos = ste.ApplyKalmanFilter(coords,
+                                                                                     gpx,
+                                                                                     method=self.comboBoxProcessingMethod.currentIndex(), 
+                                                                                     use_acceleration=self.checkUseAcceleration.isChecked(),
+                                                                                     variance_smooth=use_variance_smooth,
+                                                                                     plot=False,
+                                                                                     usehtml=False)
         self.textOutput.append(infos)
         
-        self.plotElevation.update_figure(self.measurements, self.state_means)
-        
-        self.new_coords, self.new_gpx, infos = ste.SaveDataToCoordsAndGPX(self.coords, self.state_means, usehtml=True)
+        new_coords, new_gpx, infos = ste.SaveDataToCoordsAndGPX(coords, state_means, usehtml=False)
         self.textOutput.append(infos)
+
+        # Update embedded plots
+        self.plotElevation.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+        
+        # Generate html plot
+        balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
+                       'elevation': np.asarray(new_coords['ele']),
+                       'speed': None}
+        ste.PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
+                      np.vstack((coords['lat'], coords['lon'])).T,
+                      onmapdata=None,
+                      balloondata=balloondata,
+                      rdp_reduction=self.checkUseRDP.isChecked())
         
         return
 
     def __init__(self):
         QtGui.QMainWindow.__init__(self)
         self.setWindowTitle('STEBA GUI')
-        self.setWindowIcon((QtGui.QIcon('icons/icon.png')))
+        self.setWindowIcon((QtGui.QIcon('icons/app.png')))
+        #self.setStyle()
+        self.resize(1200, 700)
+        #self.move(100, 100)
+        
         # Toolbar
         openfile = QtGui.QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
         openfile.setShortcut("Ctrl+O")
         openfile.setStatusTip("Open file")
         openfile.triggered.connect(self.selectFileToOpen)
         
-        go = QtGui.QAction(QtGui.QIcon("icons/go2.png"), "Go!", self)
+        go = QtGui.QAction(QtGui.QIcon("icons/go.png"), "Go!", self)
         go.setShortcut("Ctrl+R")
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
@@ -144,7 +166,16 @@ class MainWindow(QtGui.QMainWindow):
         
         self.textGPXFileStructure = QtGui.QTextEdit(cWidget)
         self.textGPXFileStructure.setReadOnly(True)
+        self.textGPXFileStructure.setFont(QtGui.QFont("Courier New", FONTSIZE))
         self.textGPXFileStructure.clear()
+        
+        #sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
+        #sizePolicy.setHorizontalStretch(1)
+        #sizePolicy.setVerticalStretch(0)
+        #sizePolicy.setHeightForWidth(self.textGPXFileStructure.sizePolicy().hasHeightForWidth())
+        
+        self.textGPXFileStructure.setMaximumHeight(150)   
+        #self.textGPXFileStructure.setSizePolicy(sizePolicy)
         hBox1.addWidget(self.textGPXFileStructure)
         
         vBox_left.addLayout(hBox1)
@@ -163,12 +194,12 @@ class MainWindow(QtGui.QMainWindow):
         hBox21.addWidget(labelTrack)
         
         self.spinTrack = QtGui.QSpinBox(cWidget)
-        self.spinTrack.setRange(0, 10)
+        self.spinTrack.setRange(0, 100)
         self.spinTrack.setValue(0)
         self.spinTrack.setSingleStep(1)
         hBox21.addWidget(self.spinTrack)
         self.spinSegment = QtGui.QSpinBox(cWidget)
-        self.spinSegment.setRange(0, 10)
+        self.spinSegment.setRange(0, 100)
         self.spinSegment.setValue(0)
         self.spinSegment.setSingleStep(1)
         hBox21.addWidget(self.spinSegment)
@@ -209,6 +240,8 @@ class MainWindow(QtGui.QMainWindow):
         # 3rd vertical box, containing the textual output
         self.textOutput = QtGui.QTextEdit(cWidget)
         self.textOutput.setReadOnly(True)
+        self.textOutput.setFont(QtGui.QFont("Courier New", FONTSIZE))
+        self.textOutput.clear()
         vBox_left.addWidget(self.textOutput)
         
         hBox.addLayout(vBox_left)
@@ -219,6 +252,7 @@ class MainWindow(QtGui.QMainWindow):
         
         # Plot area        
         self.plotElevation = ElevationPlot(cWidget, width=5, height=4, dpi=100)
+        self.plotElevation.setMinimumWidth(800)
         vBox_right.addWidget(self.plotElevation)
         
         hBox.addLayout(vBox_right)
