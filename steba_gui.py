@@ -1,6 +1,7 @@
 import sys
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt4agg import (
     FigureCanvasQTAgg as FigureCanvas,
@@ -32,21 +33,62 @@ http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
 FONTSIZE = 8
 PLOT_FONTSIZE = 9
 
+class SnaptoCursor(object):
+    """
+    Like Cursor but the crosshair snaps to the nearest x,y point
+    For simplicity, I'm assuming x is sorted
+    """
+
+    def __init__(self, ax, x, y):
+        self.ax = ax
+        self.lx = ax.axhline(color='k')  # the horiz line
+        self.ly = ax.axvline(color='k')  # the vert line
+        self.x = x
+        self.y = y
+        # text location in axes coords
+        self.txt = ax.text(0.7, 0.9, '', transform=ax.transAxes)
+
+    def mouse_move(self, event):
+
+        if not event.inaxes:
+            return
+
+        x, y = event.xdata, event.ydata
+
+        indx = np.searchsorted(self.x, [x])[0]
+        x = self.x[indx]
+        y = self.y[indx]
+        # update the line positions
+        self.lx.set_ydata(y)
+        self.ly.set_xdata(x)
+
+        self.txt.set_text('x=%1.2f, y=%1.2f' % (x, y))
+        print('x=%1.2f, y=%1.2f' % (x, y))
+        plt.draw()
+
+
 class ElevationPlot(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
     # Plot original/corrected altitude profile
     #def __init__(self, *args, **kwargs):
         #MyMplCanvas.__init__(self, *args, **kwargs)
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(211)
-        self.axes_bottom = fig.add_subplot(212)
-        fig.tight_layout()
-        fig.set_facecolor("w")
-
-        self.compute_initial_figure()
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(211)
+        self.axes_bottom = self.fig.add_subplot(212, sharex=self.axes)
+        self.fig.set_facecolor("w")
         
-        FigureCanvas.__init__(self, fig)
+        self.axes.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.axes.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
+        self.axes.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.axes.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+        self.axes_bottom.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
+        self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+        self.fig.tight_layout()
+        
+        FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
         FigureCanvas.setSizePolicy(self,
                                    QtGui.QSizePolicy.Expanding,
@@ -56,19 +98,14 @@ class ElevationPlot(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
-    def compute_initial_figure(self):
-        self.axes.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.axes.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
-        self.axes.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.axes.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-        self.axes_bottom.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
-        self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    
     def update_figure(self, measurements, state_means, segment):
-        self.axes = ste.PlotElevation(self.axes, measurements, state_means)
-        self.axes_bottom = ste.PlotSpeed(self.axes_bottom, segment)
+        self.axes, tmp_ele = ste.PlotElevation(self.axes, measurements, state_means)
+        self.axes_bottom, tmp_speed = ste.PlotSpeed(self.axes_bottom, segment)
+        
+        # Experiment to add an interactive cursor stuck to the data
+        # cursor = SnaptoCursor(self.axes, tmp_ele[0], tmp_ele[1])
+        # plt.connect('motion_notify_event', cursor.mouse_move)
+        self.fig.tight_layout()
         self.draw()
 
 
