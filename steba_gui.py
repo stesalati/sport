@@ -1,9 +1,21 @@
 import sys
-from PyQt4 import QtGui, QtCore
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 import numpy as np
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt4agg import (
+    FigureCanvasQTAgg as FigureCanvas,
+    NavigationToolbar2QT as NavigationToolbar)
+
+# from matplotlib.backends import qt4_compat
+# use_pyside = qt4_compat.QT_API == qt4_compat.QT_API_PYSIDE
+#if use_pyside:
+#    from PySide.QtCore import *
+#    from PySide.QtGui import *
+#else:
+#    from PyQt4 import QtGui, QtCore
+from PyQt4 import QtGui, QtCore
+
 import steba as ste
+
 
 """
 Documentation
@@ -19,9 +31,11 @@ http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
 FONTSIZE = 8
 PLOT_FONTSIZE = 9
 
-class MyMplCanvas(FigureCanvas):
+class ElevationPlot(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
-
+    # Plot original/corrected altitude profile
+    #def __init__(self, *args, **kwargs):
+        #MyMplCanvas.__init__(self, *args, **kwargs)
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(211)
@@ -30,23 +44,17 @@ class MyMplCanvas(FigureCanvas):
         fig.set_facecolor("w")
 
         self.compute_initial_figure()
-
+        
         FigureCanvas.__init__(self, fig)
         self.setParent(parent)
-
         FigureCanvas.setSizePolicy(self,
                                    QtGui.QSizePolicy.Expanding,
                                    QtGui.QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
-
-    def compute_initial_figure(self):
-        pass
+        FigureCanvas.setFocusPolicy(self,
+                                    QtCore.Qt.StrongFocus)
+        FigureCanvas.setFocus(self)
         
-class ElevationPlot(MyMplCanvas):
-    # Plot original/corrected altitude profile
-    def __init__(self, *args, **kwargs):
-        MyMplCanvas.__init__(self, *args, **kwargs)
-
     def compute_initial_figure(self):
         self.axes.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
         self.axes.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
@@ -56,11 +64,12 @@ class ElevationPlot(MyMplCanvas):
         self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
         self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
         self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-
+    
     def update_figure(self, measurements, state_means, segment):
         self.axes = ste.PlotElevation(self.axes, measurements, state_means)
         self.axes_bottom = ste.PlotSpeed(self.axes_bottom, segment)
         self.draw()
+
 
 class MainWindow(QtGui.QMainWindow):
     
@@ -115,8 +124,8 @@ class MainWindow(QtGui.QMainWindow):
         
         return
 
-    def __init__(self):
-        QtGui.QMainWindow.__init__(self)
+    def __init__(self, parent=None):
+        QtGui.QMainWindow.__init__(self, parent)
         self.setWindowTitle('STEBA GUI')
         self.setWindowIcon((QtGui.QIcon('icons/app.png')))
         #self.setStyle()
@@ -150,7 +159,7 @@ class MainWindow(QtGui.QMainWindow):
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
   
         # Main area
-        cWidget = QtGui.QWidget(self)
+        self.main_frame = QtGui.QWidget(self)
         
         # Main horizontal impagination
         hBox = QtGui.QHBoxLayout()
@@ -164,7 +173,7 @@ class MainWindow(QtGui.QMainWindow):
         hBox1 = QtGui.QHBoxLayout()
         hBox1.setSpacing(5)
         
-        self.textGPXFileStructure = QtGui.QTextEdit(cWidget)
+        self.textGPXFileStructure = QtGui.QTextEdit(self.main_frame)
         self.textGPXFileStructure.setReadOnly(True)
         self.textGPXFileStructure.setFont(QtGui.QFont("Courier New", FONTSIZE))
         self.textGPXFileStructure.clear()
@@ -185,20 +194,20 @@ class MainWindow(QtGui.QMainWindow):
         vBox2.setSpacing(5)
         
         # Just the group label
-        labelSettings = QtGui.QLabel('Settings', cWidget)
+        labelSettings = QtGui.QLabel('Settings', self.main_frame)
         vBox2.addWidget(labelSettings)
         
         # Track/segment selection
         hBox21 = QtGui.QHBoxLayout()
-        labelTrack = QtGui.QLabel('Track/Segment', cWidget)
+        labelTrack = QtGui.QLabel('Track/Segment', self.main_frame)
         hBox21.addWidget(labelTrack)
         
-        self.spinTrack = QtGui.QSpinBox(cWidget)
+        self.spinTrack = QtGui.QSpinBox(self.main_frame)
         self.spinTrack.setRange(0, 100)
         self.spinTrack.setValue(0)
         self.spinTrack.setSingleStep(1)
         hBox21.addWidget(self.spinTrack)
-        self.spinSegment = QtGui.QSpinBox(cWidget)
+        self.spinSegment = QtGui.QSpinBox(self.main_frame)
         self.spinSegment.setRange(0, 100)
         self.spinSegment.setValue(0)
         self.spinSegment.setSingleStep(1)
@@ -206,13 +215,13 @@ class MainWindow(QtGui.QMainWindow):
         vBox2.addLayout(hBox21)
         
         # Use/don't use corrected altitude
-        self.checkUseSRTM = QtGui.QCheckBox("Use SRTM corrected elevation", cWidget)
+        self.checkUseSRTM = QtGui.QCheckBox("Use SRTM corrected elevation", self.main_frame)
         self.checkUseSRTM.setChecked(False)
         vBox2.addWidget(self.checkUseSRTM)
         
         # Choose processing method
         hBoxProcessingMethod = QtGui.QHBoxLayout()
-        labelProcessingMethod = QtGui.QLabel('Processing method', cWidget)
+        labelProcessingMethod = QtGui.QLabel('Processing method', self.main_frame)
         hBoxProcessingMethod.addWidget(labelProcessingMethod)
         self.comboBoxProcessingMethod = QtGui.QComboBox()
         self.comboBoxProcessingMethod.addItem("Just use available data")
@@ -221,24 +230,24 @@ class MainWindow(QtGui.QMainWindow):
         vBox2.addLayout(hBoxProcessingMethod)
         
         # Use/don't use acceleration
-        self.checkUseAcceleration = QtGui.QCheckBox("Use acceleration in Kalman filter", cWidget)
+        self.checkUseAcceleration = QtGui.QCheckBox("Use acceleration in Kalman filter", self.main_frame)
         self.checkUseAcceleration.setChecked(False)
         vBox2.addWidget(self.checkUseAcceleration)
         
         # Use/don't use variance smooth
-        self.checkUseVarianceSmooth = QtGui.QCheckBox("Use variance smooth", cWidget)
+        self.checkUseVarianceSmooth = QtGui.QCheckBox("Use variance smooth", self.main_frame)
         self.checkUseVarianceSmooth.setChecked(False)
         vBox2.addWidget(self.checkUseVarianceSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QtGui.QCheckBox("Allow using RDP to reduce number of points displayed", cWidget)
+        self.checkUseRDP = QtGui.QCheckBox("Allow using RDP to reduce number of points displayed", self.main_frame)
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
         vBox_left.addLayout(vBox2)
                 
         # 3rd vertical box, containing the textual output
-        self.textOutput = QtGui.QTextEdit(cWidget)
+        self.textOutput = QtGui.QTextEdit(self.main_frame)
         self.textOutput.setReadOnly(True)
         self.textOutput.setFont(QtGui.QFont("Courier New", FONTSIZE))
         self.textOutput.clear()
@@ -250,18 +259,27 @@ class MainWindow(QtGui.QMainWindow):
         vBox_right = QtGui.QVBoxLayout()
         vBox_right.setSpacing(20)
         
-        # Plot area        
-        self.plotElevation = ElevationPlot(cWidget, width=5, height=4, dpi=100)
+        # Plot area
+        self.plotElevation = ElevationPlot(self.main_frame, width=5, height=4, dpi=100)
         self.plotElevation.setMinimumWidth(800)
+        
+        # Add toolbar to the plot
+        self.mpl_toolbar = NavigationToolbar(self.plotElevation, self.main_frame)
+        
+        
         vBox_right.addWidget(self.plotElevation)
+        vBox_right.addWidget(self.mpl_toolbar)
         
         hBox.addLayout(vBox_right)
 
         # Setting vBox as main box
-        cWidget.setLayout(hBox)
-        self.setCentralWidget(cWidget)
+        self.main_frame.setLayout(hBox)
+        self.setCentralWidget(self.main_frame)
 
 app = QtGui.QApplication(sys.argv)
 main = MainWindow()
 main.show()
 sys.exit(app.exec_())
+# Alternative:
+# app.exec_()
+
