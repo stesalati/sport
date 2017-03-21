@@ -1,4 +1,5 @@
 import sys
+import os
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt4agg import (
@@ -74,8 +75,22 @@ class ElevationPlot(FigureCanvas):
 class MainWindow(QtGui.QMainWindow):
     
     def selectFileToOpen(self):
+        # Clear the file-structure text field
         self.textGPXFileStructure.clear()
-        filename = QtGui.QFileDialog.getOpenFileName()
+        
+        # Try to recover the last used directory
+        old_directory = self.settings.value("lastdirectory").toString()
+        if not old_directory:
+            old_directory = "tracks"
+        
+        # Open the dialog box
+        filename = QtGui.QFileDialog.getOpenFileName(caption='Open .gpx',
+                                                     directory=old_directory,
+                                                     filter="GPX files (*.gpx)")
+        directory = os.path.split(str(filename))
+        # Save the new directory in the application settings
+        self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
+        
         self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename, usehtml=False)        
         self.spinTrack.setRange(0, Ntracks-1)
         self.spinTrack.setValue(longest_traseg[0])
@@ -131,6 +146,12 @@ class MainWindow(QtGui.QMainWindow):
         #self.setStyle()
         self.resize(1200, 700)
         #self.move(100, 100)
+        
+        # Application Settings
+        QtCore.QCoreApplication.setOrganizationName("Steba")
+        QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
+        QtCore.QCoreApplication.setApplicationName("Steba")
+        self.settings = QtCore.QSettings(self)
         
         # Toolbar
         openfile = QtGui.QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
