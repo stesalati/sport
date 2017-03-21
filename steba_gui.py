@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qt4agg import (
     NavigationToolbar2QT as NavigationToolbar)
 import platform
 import ctypes
+from matplotlib.widgets import Cursor
 
 # from matplotlib.backends import qt4_compat
 # use_pyside = qt4_compat.QT_API == qt4_compat.QT_API_PYSIDE
@@ -35,6 +36,9 @@ http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
 FONTSIZE = 8
 PLOT_FONTSIZE = 9
 
+# Documentation
+# http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
+# http://stackoverflow.com/questions/35414003/python-how-can-i-display-cursor-on-all-axes-vertically-but-only-on-horizontall
 class SnaptoCursor(object):
     """
     Like Cursor but the crosshair snaps to the nearest x,y point
@@ -63,10 +67,14 @@ class SnaptoCursor(object):
         # update the line positions
         self.lx.set_ydata(y)
         self.ly.set_xdata(x)
+        
+        # ostring = "{}m @{}m".format(y,x)
+        # self.textElevation.setText(ostring)
 
-        self.txt.set_text('x=%1.2f, y=%1.2f' % (x, y))
-        print('x=%1.2f, y=%1.2f' % (x, y))
-        plt.draw()
+        #self.txt.set_text('x=%1.2f, y=%1.2f' % (x, y))
+        #print('x=%1.2f, y=%1.2f' % (x, y))
+        
+        # plt.draw()
 
 
 class ElevationPlot(FigureCanvas):
@@ -103,10 +111,20 @@ class ElevationPlot(FigureCanvas):
     def update_figure(self, measurements, state_means, segment):
         self.axes, tmp_ele = ste.PlotElevation(self.axes, measurements, state_means)
         self.axes_bottom, tmp_speed = ste.PlotSpeed(self.axes_bottom, segment)
+                
+        # Experiment 1: add a free interactive cursor (WORKING)
+        # cursor = Cursor(self.axes, useblit=False, color='red', linewidth=1)
+        # def onclick(event):
+        #     cursor.onmove(event)
+        # self.mpl_connect('button_press_event', onclick)
         
-        # Experiment to add an interactive cursor stuck to the data
-        # cursor = SnaptoCursor(self.axes, tmp_ele[0], tmp_ele[1])
-        # plt.connect('motion_notify_event', cursor.mouse_move)
+        # Experiment 2, add an anchored interactive cursor (WORKING BUT SLOW)
+        # cursor_anchored = SnaptoCursor(self.axes, tmp_ele[0], tmp_ele[1])
+        # def onclick(event):
+        #     cursor_anchored.mouse_move(event)
+        #     self.draw()
+        # self.mpl_connect('motion_notify_event', onclick)
+        
         self.fig.tight_layout()
         self.draw()
 
@@ -142,6 +160,9 @@ class MainWindow(QtGui.QMainWindow):
         # Read settings from GUI
         use_variance_smooth = self.checkUseVarianceSmooth.isChecked()
         
+        # Temporarily change cursor
+        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        
         # Parse the GPX file
         gpx, coords, infos = ste.ParseGPX(self.rawgpx,
                                           track_nr=int(self.spinTrack.value()),
@@ -165,6 +186,9 @@ class MainWindow(QtGui.QMainWindow):
 
         # Update embedded plots
         self.plotElevation.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+        
+        # Restore original cursor
+        QtGui.QApplication.restoreOverrideCursor()
         
         # Generate html plot
         balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
@@ -323,11 +347,21 @@ class MainWindow(QtGui.QMainWindow):
         self.plotElevation = ElevationPlot(self.main_frame, width=5, height=4, dpi=100)
         self.plotElevation.setMinimumWidth(800)
         
+        # Add elevation/speed output fields
+        #hBoxElevationDistance = QtGui.QHBoxLayout()
+        #labelElevation = QtGui.QLabel('Elevation at point:', self.main_frame)
+        #hBoxElevationDistance.addWidget(labelElevation)
+        #self.textElevation = QtGui.QLineEdit(self.main_frame)
+        #self.textElevation.setReadOnly(True)
+        #self.textElevation.setFont(QtGui.QFont("Courier New", FONTSIZE))
+        #self.textElevation.clear()
+        #hBoxElevationDistance.addWidget(self.textElevation)
+        
         # Add toolbar to the plot
         self.mpl_toolbar = NavigationToolbar(self.plotElevation, self.main_frame)
         
-        
         vBox_right.addWidget(self.plotElevation)
+        #vBox_right.addLayout(hBoxElevationDistance)
         vBox_right.addWidget(self.mpl_toolbar)
         
         hBox.addLayout(vBox_right)
