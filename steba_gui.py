@@ -6,6 +6,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt4agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
+import platform
+import ctypes
 
 # from matplotlib.backends import qt4_compat
 # use_pyside = qt4_compat.QT_API == qt4_compat.QT_API_PYSIDE
@@ -336,6 +338,16 @@ class MainWindow(QtGui.QMainWindow):
 
 app = QtGui.QApplication(sys.argv)
 main = MainWindow()
+
+# Showing the right icon in the taskbar
+if platform.system() == "Darwin":
+    # On MAC
+    pass
+elif platform.system() == 'Windows':
+    # On Windows
+    myappid = 'Steba.Steba.Steba.v0.1' # arbitrary string
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
 main.show()
 sys.exit(app.exec_())
 # Alternative:
