@@ -285,7 +285,7 @@ def PlotElevation(ax, measurements, state_means):
     ltext  = l.get_texts()
     plt.setp(ltext, fontsize='small')
     ax.grid(True)
-    return ax
+    return ax, (distance, measurements[:,2])
     
 def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
     # Saving to a new coords
@@ -364,7 +364,7 @@ def PlotSpeed(ax, gpx_segment):
     plt.setp(ltext, fontsize='small')
     ax.grid(True)
     
-    return ax
+    return ax, (distance, coords['speed'])
 
 
 #==============================================================================
