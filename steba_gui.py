@@ -1,24 +1,22 @@
 #!/usr/bin/python
 import sys
-from PyQt4 import QtGui, QtCore
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QToolTip, 
+                             QPushButton, QApplication, qApp,
+                             QAction, QPushButton, QLabel,
+                             QHBoxLayout, QVBoxLayout, QLineEdit, 
+                             QTextEdit, QCheckBox, QComboBox,
+                             QSpinBox, QSizePolicy, QFileDialog)
+from PyQt5 import QtGui, QtCore
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt4agg import (
+from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
 import platform
 import ctypes
 from matplotlib.widgets import Cursor
-
-# from matplotlib.backends import qt4_compat
-# use_pyside = qt4_compat.QT_API == qt4_compat.QT_API_PYSIDE
-#if use_pyside:
-#    from PySide.QtCore import *
-#    from PySide.QtGui import *
-#else:
-#    from PyQt4 import QtGui, QtCore
 
 import steba as ste
 
@@ -29,6 +27,9 @@ Documentation
 PyQT
 http://www.python.it/wiki/show/qttutorial/
 http://zetcode.com/gui/pyqt4/menusandtoolbars/
+
+http://zetcode.com/gui/pyqt5/layout/
+https://pythonspot.com/en/pyqt5-matplotlib/
 
 Plots
 http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
@@ -102,8 +103,8 @@ class ElevationPlot(FigureCanvas):
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
         FigureCanvas.setSizePolicy(self,
-                                   QtGui.QSizePolicy.Expanding,
-                                   QtGui.QSizePolicy.Expanding)
+                                   QSizePolicy.Expanding,
+                                   QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
         FigureCanvas.setFocusPolicy(self,
                                     QtCore.Qt.StrongFocus)
@@ -130,21 +131,24 @@ class ElevationPlot(FigureCanvas):
         self.draw()
 
 
-class MainWindow(QtGui.QMainWindow):
+class MainWindow(QMainWindow):
     
     def selectFileToOpen(self):
         # Clear the file-structure text field
         self.textGPXFileStructure.clear()
         
         # Try to recover the last used directory
-        old_directory = self.settings.value("lastdirectory").toString()
-        if not old_directory:
+        old_directory = self.settings.value("lastdirectory")
+        if old_directory is not None:
+            old_directory = old_directory.toString()            
+        else:
             old_directory = "tracks"
         
         # Open the dialog box
-        filename = QtGui.QFileDialog.getOpenFileName(caption='Open .gpx',
-                                                     directory=old_directory,
-                                                     filter="GPX files (*.gpx)")
+        #fname = QFileDialog.getOpenFileName(self, 'Open file', '/home')
+        filename = QFileDialog.getOpenFileName(caption='Open .gpx',
+                                               directory=old_directory,
+                                               filter="GPX files (*.gpx)")
         directory = os.path.split(str(filename))
         # Save the new directory in the application settings
         self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
@@ -204,13 +208,10 @@ class MainWindow(QtGui.QMainWindow):
         return
 
     def __init__(self, parent=None):
-        QtGui.QMainWindow.__init__(self, parent)
-        self.setWindowTitle('STEBA GUI')
-        self.setWindowIcon((QtGui.QIcon('icons/app.png')))
-        #self.setStyle()
-        self.resize(1200, 700)
-        #self.move(100, 100)
+        super(MainWindow, self).__init__()
+        self.initUI()
         
+    def initUI(self):        
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Steba")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
@@ -218,81 +219,70 @@ class MainWindow(QtGui.QMainWindow):
         self.settings = QtCore.QSettings(self)
         
         # Toolbar
-        openfile = QtGui.QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
+        openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
         openfile.setShortcut("Ctrl+O")
         openfile.setStatusTip("Open file")
         openfile.triggered.connect(self.selectFileToOpen)
         
-        go = QtGui.QAction(QtGui.QIcon("icons/go.png"), "Go!", self)
+        go = QAction(QtGui.QIcon("icons/go.png"), "Go!", self)
         go.setShortcut("Ctrl+R")
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
-        sep = QtGui.QAction(self)
+        sep = QAction(self)
         sep.setSeparator(True)
         
-        quitapp = QtGui.QAction(QtGui.QIcon("icons/quit.png"), "Quit", self)
+        quitapp = QAction(QtGui.QIcon("icons/quit.png"), "Quit", self)
         quitapp.setShortcut("Ctrl+Q")
         quitapp.setStatusTip("Quit application")
-        self.connect(quitapp, QtCore.SIGNAL('triggered()'), QtCore.SLOT('close()'))
+        quitapp.triggered.connect(qApp.quit)
         
         self.statusBar().show()
-        toolbar = self.addToolBar('My tool')
+        toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-  
-        # Main area
-        self.main_frame = QtGui.QWidget(self)
+        
+        # Main widget (everything that's not toolbar, statusbar or menubar must be in this widget)
+        self.scatola = QWidget()
         
         # Main horizontal impagination
-        hBox = QtGui.QHBoxLayout()
+        hBox = QHBoxLayout()
         hBox.setSpacing(20)
         
         # Vertical left column
-        vBox_left = QtGui.QVBoxLayout()
+        vBox_left = QVBoxLayout()
         vBox_left.setSpacing(20)
         
-        # 1st horizontal box, containing label and text
-        hBox1 = QtGui.QHBoxLayout()
-        hBox1.setSpacing(5)
-        
-        self.textGPXFileStructure = QtGui.QTextEdit(self.main_frame)
+        # 1st widget, text
+        self.textGPXFileStructure = QTextEdit()
         self.textGPXFileStructure.setReadOnly(True)
         self.textGPXFileStructure.setFont(QtGui.QFont("Courier New", FONTSIZE))
         self.textGPXFileStructure.clear()
         
-        #sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Fixed)
-        #sizePolicy.setHorizontalStretch(1)
-        #sizePolicy.setVerticalStretch(0)
-        #sizePolicy.setHeightForWidth(self.textGPXFileStructure.sizePolicy().hasHeightForWidth())
-        
-        self.textGPXFileStructure.setMaximumHeight(150)   
-        #self.textGPXFileStructure.setSizePolicy(sizePolicy)
-        hBox1.addWidget(self.textGPXFileStructure)
-        
-        vBox_left.addLayout(hBox1)
+        self.textGPXFileStructure.setMaximumHeight(150)
+        vBox_left.addWidget(self.textGPXFileStructure)
         
         # 2nd vertical box, containing several horizontal boxes, one for each setting
-        vBox2 = QtGui.QVBoxLayout()
+        vBox2 = QVBoxLayout()
         vBox2.setSpacing(5)
         
         # Just the group label
-        labelSettings = QtGui.QLabel('Settings', self.main_frame)
+        labelSettings = QLabel('Settings')
         vBox2.addWidget(labelSettings)
         
         # Track/segment selection
-        hBox21 = QtGui.QHBoxLayout()
-        labelTrack = QtGui.QLabel('Track/Segment', self.main_frame)
+        hBox21 = QHBoxLayout()
+        labelTrack = QLabel('Track/Segment')
         hBox21.addWidget(labelTrack)
         
-        self.spinTrack = QtGui.QSpinBox(self.main_frame)
+        self.spinTrack = QSpinBox()
         self.spinTrack.setRange(0, 100)
         self.spinTrack.setValue(0)
         self.spinTrack.setSingleStep(1)
         hBox21.addWidget(self.spinTrack)
-        self.spinSegment = QtGui.QSpinBox(self.main_frame)
+        self.spinSegment = QSpinBox()
         self.spinSegment.setRange(0, 100)
         self.spinSegment.setValue(0)
         self.spinSegment.setSingleStep(1)
@@ -300,39 +290,39 @@ class MainWindow(QtGui.QMainWindow):
         vBox2.addLayout(hBox21)
         
         # Use/don't use corrected altitude
-        self.checkUseSRTM = QtGui.QCheckBox("Use SRTM corrected elevation", self.main_frame)
+        self.checkUseSRTM = QCheckBox("Use SRTM corrected elevation")
         self.checkUseSRTM.setChecked(False)
         vBox2.addWidget(self.checkUseSRTM)
         
         # Choose processing method
-        hBoxProcessingMethod = QtGui.QHBoxLayout()
-        labelProcessingMethod = QtGui.QLabel('Processing method', self.main_frame)
+        hBoxProcessingMethod = QHBoxLayout()
+        labelProcessingMethod = QLabel('Processing method')
         hBoxProcessingMethod.addWidget(labelProcessingMethod)
-        self.comboBoxProcessingMethod = QtGui.QComboBox()
+        self.comboBoxProcessingMethod = QComboBox()
         self.comboBoxProcessingMethod.addItem("Just use available data")
         self.comboBoxProcessingMethod.addItem("Resample at 1Hz")
         hBoxProcessingMethod.addWidget(self.comboBoxProcessingMethod)
         vBox2.addLayout(hBoxProcessingMethod)
         
         # Use/don't use acceleration
-        self.checkUseAcceleration = QtGui.QCheckBox("Use acceleration in Kalman filter", self.main_frame)
+        self.checkUseAcceleration = QCheckBox("Use acceleration in Kalman filter")
         self.checkUseAcceleration.setChecked(False)
         vBox2.addWidget(self.checkUseAcceleration)
         
         # Use/don't use variance smooth
-        self.checkUseVarianceSmooth = QtGui.QCheckBox("Use variance smooth", self.main_frame)
+        self.checkUseVarianceSmooth = QCheckBox("Use variance smooth")
         self.checkUseVarianceSmooth.setChecked(False)
         vBox2.addWidget(self.checkUseVarianceSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QtGui.QCheckBox("Allow using RDP to reduce number of points displayed", self.main_frame)
+        self.checkUseRDP = QCheckBox("Allow using RDP to reduce number of points displayed")
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
         vBox_left.addLayout(vBox2)
                 
-        # 3rd vertical box, containing the textual output
-        self.textOutput = QtGui.QTextEdit(self.main_frame)
+        # 3rd text, containing the processing output
+        self.textOutput = QTextEdit()
         self.textOutput.setReadOnly(True)
         self.textOutput.setFont(QtGui.QFont("Courier New", FONTSIZE))
         self.textOutput.clear()
@@ -341,37 +331,42 @@ class MainWindow(QtGui.QMainWindow):
         hBox.addLayout(vBox_left)
         
         # Vertical right column
-        vBox_right = QtGui.QVBoxLayout()
+        vBox_right = QVBoxLayout()
         vBox_right.setSpacing(20)
         
         # Plot area
-        self.plotElevation = ElevationPlot(self.main_frame, width=5, height=4, dpi=100)
+        self.plotElevation = ElevationPlot(width=5, height=4, dpi=100)
         self.plotElevation.setMinimumWidth(800)
         
         # Add elevation/speed output fields
-        #hBoxElevationDistance = QtGui.QHBoxLayout()
-        #labelElevation = QtGui.QLabel('Elevation at point:', self.main_frame)
+        #hBoxElevationDistance = QHBoxLayout()
+        #labelElevation = QLabel('Elevation at point:', self.main_frame)
         #hBoxElevationDistance.addWidget(labelElevation)
-        #self.textElevation = QtGui.QLineEdit(self.main_frame)
+        #self.textElevation = QLineEdit(self.main_frame)
         #self.textElevation.setReadOnly(True)
-        #self.textElevation.setFont(QtGui.QFont("Courier New", FONTSIZE))
+        #self.textElevation.setFont(QFont("Courier New", FONTSIZE))
         #self.textElevation.clear()
         #hBoxElevationDistance.addWidget(self.textElevation)
         
         # Add toolbar to the plot
-        self.mpl_toolbar = NavigationToolbar(self.plotElevation, self.main_frame)
+        self.mpl_toolbar = NavigationToolbar(self.plotElevation, self.scatola)
         
         vBox_right.addWidget(self.plotElevation)
         #vBox_right.addLayout(hBoxElevationDistance)
         vBox_right.addWidget(self.mpl_toolbar)
         
         hBox.addLayout(vBox_right)
+        
+        # Setting hBox as main box
+        self.scatola.setLayout(hBox)
+        self.setCentralWidget(self.scatola)
+        self.setWindowTitle('STEBA GUI')
+        self.setWindowIcon((QtGui.QIcon('icons/app.png')))
+        self.setGeometry(100, 100, 1200, 700)
+        self.show()
 
-        # Setting vBox as main box
-        self.main_frame.setLayout(hBox)
-        self.setCentralWidget(self.main_frame)
 
-app = QtGui.QApplication(sys.argv)
+app = QApplication(sys.argv)
 main = MainWindow()
 
 # Showing the right icon in the taskbar
