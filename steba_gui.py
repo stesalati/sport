@@ -1,4 +1,6 @@
+#!/usr/bin/python
 import sys
+from PyQt4 import QtGui, QtCore
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +19,6 @@ from matplotlib.widgets import Cursor
 #    from PySide.QtGui import *
 #else:
 #    from PyQt4 import QtGui, QtCore
-from PyQt4 import QtGui, QtCore
 
 import steba as ste
 
