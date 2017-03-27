@@ -34,7 +34,7 @@ from rdp import rdp
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, plot, usehtml):
+def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth, plot, usehtml):
     # Documentation
     # https://pykalman.github.io
     # https://github.com/pykalman/pykalman/tree/master/examples/standard
@@ -215,36 +215,42 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
     # removed are those that were already masked, that, being artificially
     # added NaNs, the result doesn't change much.
     THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-    if variance_smooth:
+    if use_variance_smooth:
         coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
         coord_var_r = np.median(np.sort(coord_var)[:-20:-1]) / np.mean(coord_var)
-        print "\nANALYZING RESULTING VARIANCE"
-        print "Ratio between mean_variance_top20/median_variance: {}".format(coord_var_r)
+        
+        infos = infos + "\nANALYZING RESULTING VARIANCE\n"
+        infos = infos + "Variance top20/all ratio: {:.1f}\n".format(coord_var_r)
         idx_var_too_high = np.where(coord_var > (10 * np.median(coord_var)))
-        print "Number of points whose variance is considered too high: {}".format(len(idx_var_too_high[0]))
-        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
-        print "Number of points that were already masked (being NaNs): {}".format(nr_further_points_to_mask)
-        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
-            # ... then it's worth continuing
-            measurements.mask[idx_var_too_high, :] = True
-            state_means2, state_vars2 = kf.smooth(measurements)
-            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
-        else:
-            # ... then turn off variance_smooth cos it's not worth
-            variance_smooth = False
+        infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
+# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+#        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
+#        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
+#        
+#        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
+#            # ... then it's worth continuing
+#            infos = infos + "It's worth smoothing the signal further\n"
+#            measurements.mask[idx_var_too_high, :] = True
+#            state_means2, state_vars2 = kf.smooth(measurements) 
+#            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
+#        else:
+#            # ... then turn off use_variance_smooth cos it's not worth
+#            infos = infos + "It's not worth smoothing the signal further\n"
+#            use_variance_smooth = False
     
     if plot:
         # Plot original/corrected map
         lat_center = (np.max(state_means[:,0]) + np.min(state_means[:,0])) / 2.
         lon_center = (np.max(state_means[:,1]) + np.min(state_means[:,1])) / 2.
         map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)
-        map_osm.add_children(folium.PolyLine(orig_measurements[:,:2], 
-                                             color='#666666', weight = 4, opacity=1))
-        map_osm.add_children(folium.PolyLine(state_means[:,:2], 
-                                             color='#FF0000', weight = 4, opacity=1))
-        if variance_smooth:
-            map_osm.add_children(folium.PolyLine(state_means2[:,:2], 
-                                                 color='#00FF00', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(orig_measurements[:,:2], 
+                                          color='#666666', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(state_means[:,:2], 
+                                          color='#FF0000', weight = 4, opacity=1))
+# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+#        if use_variance_smooth:
+#            map_osm.add_child(folium.PolyLine(state_means2[:,:2], 
+#                                              color='#00FF00', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
@@ -257,11 +263,12 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
             webbrowser.open(HTML_FILENAME, new=2)
         
         # Plot coordinates variance
-        if variance_smooth:
+        if use_variance_smooth:
             fig_coordvar, ax_coordvar = plt.subplots(2,1)
             ax_coordvar[0].plot(coord_var, color="r", linestyle="-", marker="None")
-            if variance_smooth:
-                ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
+# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+#            if use_variance_smooth:
+#                ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
             ax_coordvar[0].grid(True)
             ax_coordvar[1].hist(np.log10(coord_var), bins=100)
             ax_coordvar[1].grid(True)
@@ -273,18 +280,29 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
             
     return coords, measurements, state_means, state_vars, infos
 
-def PlotElevation(ax, measurements, state_means):
+def PlotElevation(ax, measurements, state_means, state_vars):
     distance = np.cumsum(HaversineDistance(np.asarray(state_means[:,0]), np.asarray(state_means[:,1])))
     distance = np.hstack(([0.], distance))
+    coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
+    
+    ax_var = ax.twinx()
     ax.cla()
-    ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
-    ax.plot(distance, state_means[:,2], color="r", linestyle="-", marker="None")
+    ax_var.cla()
+    
+    ax_var.plot(distance, coord_var, color='0.9')
+    ax.plot(distance, measurements[:,2], color="#FFAAAA", linestyle="None", marker=".")
+    ax.plot(distance, state_means[:,2], color="#FF0000", linestyle="-", marker="None")
     ax.set_xlabel("Distance (m)")
     ax.set_ylabel("Elevation (m)")
+    ax_var.set_ylabel("Variance")
     l = ax.legend(['Measured', 'Estimated'])
     ltext  = l.get_texts()
     plt.setp(ltext, fontsize='small')
     ax.grid(True)
+    
+    ax.set_zorder(ax_var.get_zorder()+1)
+    ax.patch.set_visible(False)
+    
     return ax, (distance, measurements[:,2])
     
 def SaveDataToCoordsAndGPX(coords, state_means, usehtml):
@@ -355,16 +373,16 @@ def PlotSpeed(ax, gpx_segment):
         
     ax.cla()
     #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
-    ax.plot(distance, coords['speed'], color="r", linestyle="-", marker="None")
+    ax.plot(distance, coords['speed']*3.6, color="r", linestyle="-", marker="None")
     ax.set_xlabel("Distance (m)")
-    ax.set_ylabel("Speed (m/s)")
+    ax.set_ylabel("Speed (km/h)")
     #ax.legend(['Measured', 'Estimated'])
     l = ax.legend(['Estimated'])
     ltext  = l.get_texts()
     plt.setp(ltext, fontsize='small')
     ax.grid(True)
     
-    return ax, (distance, coords['speed'])
+    return ax, (distance, coords['speed']*3.6)
 
 
 #==============================================================================
@@ -780,7 +798,7 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 
                 highest_point_popup = folium.Popup(max_width = 1200).add_child(
                                         folium.Vega(json.load(open('plot_h.json')), width = 1000, height = 550))
-                map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
+                map_osm.add_child(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
                                                    # popup = "Highest point",
                                                    popup = highest_point_popup,
                                                    icon=folium.Icon(icon='cloud')))
@@ -804,12 +822,12 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 #).add_to(map_osm)
         
         # Plot start/finish markers
-        map_osm.add_children(folium.Marker([lat[0], lon[0]],
-                                               popup = "Start",
-                                               icon=folium.Icon(color='green', icon='circle-arrow-up')))
-        map_osm.add_children(folium.Marker([lat[-1], lon[-1]], 
-                                           popup = "Finish",
-                                           icon=folium.Icon(color='red', icon='circle-arrow-down')))
+        map_osm.add_child(folium.Marker([lat[0], lon[0]],
+                                        popup = "Start",
+                                        icon=folium.Icon(color='green', icon='circle-arrow-up')))
+        map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
+                                        popup = "Finish",
+                                        icon=folium.Icon(color='red', icon='circle-arrow-down')))
         
         # Plot data
         if onmapdata is not None:
@@ -858,9 +876,9 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 print "\nWARNING: RDP reduction activated with onmapdata, trace/polygons misallignments are possible"
             coords_array = rdp(coords_array, RDP_EPSILON)
             
-        map_osm.add_children(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
         if coords_array2 is not None:
-            map_osm.add_children(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
+            map_osm.add_child(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
@@ -935,7 +953,7 @@ def main(argv=None):
         coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
                                                                                  method=0, 
                                                                                  use_acceleration=False,
-                                                                                 variance_smooth=False,
+                                                                                 use_variance_smooth=False,
                                                                                  plot=False,
                                                                                  usehtml=False)
         print infos
