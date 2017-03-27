@@ -2,11 +2,12 @@
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QToolTip, 
                              QPushButton, QApplication, qApp,
-                             QAction, QPushButton, QLabel,
+                             QAction, QLabel, QFileDialog,
                              QHBoxLayout, QVBoxLayout, QLineEdit, 
                              QTextEdit, QCheckBox, QComboBox,
-                             QSpinBox, QSizePolicy, QFileDialog)
+                             QSpinBox, QSizePolicy)
 from PyQt5 import QtGui, QtCore
+# from PyQt5.QtCore import QSettings
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar)
 import platform
 import ctypes
-from matplotlib.widgets import Cursor
+#from matplotlib.widgets import Cursor, MultiCursor
 
 import steba as ste
 
@@ -24,62 +25,72 @@ import steba as ste
 """
 Documentation
 
-PyQT
+PyQt4
 http://www.python.it/wiki/show/qttutorial/
 http://zetcode.com/gui/pyqt4/menusandtoolbars/
+http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
 
+PyQt5
 http://zetcode.com/gui/pyqt5/layout/
+http://zetcode.com/gui/pyqt5/dialogs/
 https://pythonspot.com/en/pyqt5-matplotlib/
 
 Plots
-http://matplotlib.org/examples/user_interfaces/embedding_in_qt4.html
+http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
+http://stackoverflow.com/questions/35414003/python-how-can-i-display-cursor-on-all-axes-vertically-but-only-on-horizontall
+http://matplotlib.org/users/annotations.html
 """
 
 FONTSIZE = 8
 PLOT_FONTSIZE = 9
-
-# Documentation
-# http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
-# http://stackoverflow.com/questions/35414003/python-how-can-i-display-cursor-on-all-axes-vertically-but-only-on-horizontall
-class SnaptoCursor(object):
-    """
-    Like Cursor but the crosshair snaps to the nearest x,y point
-    For simplicity, I'm assuming x is sorted
-    """
-
-    def __init__(self, ax, x, y):
-        self.ax = ax
-        self.lx = ax.axhline(color='k')  # the horiz line
-        self.ly = ax.axvline(color='k')  # the vert line
-        self.x = x
-        self.y = y
-        # text location in axes coords
-        self.txt = ax.text(0.7, 0.9, '', transform=ax.transAxes)
-
+ 
+class MultiCursorLinkedToTrace(object):
+    def __init__(self, ax1, x1, y1, ax2, x2, y2):
+        # Axis 1
+        self.ax1 = ax1
+        self.lx1 = ax1.axhline(linewidth=1, color='k', alpha=0.5, label="caccola")  # the horiz line
+        self.ly1 = ax1.axvline(linewidth=1, color='k', alpha=0.5)  # the vert line
+        self.x1 = x1
+        self.y1 = y1
+        # Axis 2
+        self.ax2 = ax2
+        self.lx2 = ax2.axhline(linewidth=1, color='k', alpha=0.5)  # the horiz line
+        self.ly2 = ax2.axvline(linewidth=1, color='k', alpha=0.5)  # the vert line
+        self.x2 = x2
+        self.y2 = y2
+        # Annotation boxes
+        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1)
+        self.txt1 = ax1.text(0, 0, "", alpha=0.5, bbox=bbox_props)
+        self.txt2 = ax2.text(0, 0, "", alpha=0.5, bbox=bbox_props)
+        
     def mouse_move(self, event):
-
         if not event.inaxes:
             return
-
         x, y = event.xdata, event.ydata
+        # It needs to be inside a try statement in order not to crash when the cursor
+        # is moved out of the x range
+        try:
+            indx = np.searchsorted(self.x1, [x])[0]
+            x1 = self.x1[indx]
+            y1 = self.y1[indx]
+            x2 = self.x2[indx]
+            y2 = self.y2[indx]
+            # update the line positions
+            self.lx1.set_ydata(y1)
+            self.ly1.set_xdata(x1)
+            self.lx2.set_ydata(y2)
+            self.ly2.set_xdata(x2)
+            # Update annotations
+            self.txt1.set_text("{}m".format(y1))
+            self.txt1.set_position((x1, y1))
+            self.txt2.set_text("{}m/s".format(y2))
+            self.txt2.set_position((x2, y2))
+        except:
+            return
+        plt.draw()
 
-        indx = np.searchsorted(self.x, [x])[0]
-        x = self.x[indx]
-        y = self.y[indx]
-        # update the line positions
-        self.lx.set_ydata(y)
-        self.ly.set_xdata(x)
-        
-        # ostring = "{}m @{}m".format(y,x)
-        # self.textElevation.setText(ostring)
 
-        #self.txt.set_text('x=%1.2f, y=%1.2f' % (x, y))
-        #print('x=%1.2f, y=%1.2f' % (x, y))
-        
-        # plt.draw()
-
-
-class ElevationPlot(FigureCanvas):
+class EmbeddedPlot(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
     # Plot original/corrected altitude profile
     #def __init__(self, *args, **kwargs):
@@ -98,7 +109,7 @@ class ElevationPlot(FigureCanvas):
         self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
         self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
         self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-        self.fig.tight_layout()
+        self.fig.set_tight_layout(True)
         
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
@@ -113,21 +124,20 @@ class ElevationPlot(FigureCanvas):
     def update_figure(self, measurements, state_means, segment):
         self.axes, tmp_ele = ste.PlotElevation(self.axes, measurements, state_means)
         self.axes_bottom, tmp_speed = ste.PlotSpeed(self.axes_bottom, segment)
-                
-        # Experiment 1: add a free interactive cursor (WORKING)
-        # cursor = Cursor(self.axes, useblit=False, color='red', linewidth=1)
-        # def onclick(event):
-        #     cursor.onmove(event)
-        # self.mpl_connect('button_press_event', onclick)
         
-        # Experiment 2, add an anchored interactive cursor (WORKING BUT SLOW)
-        # cursor_anchored = SnaptoCursor(self.axes, tmp_ele[0], tmp_ele[1])
-        # def onclick(event):
-        #     cursor_anchored.mouse_move(event)
-        #     self.draw()
-        # self.mpl_connect('motion_notify_event', onclick)
+        # Add cursor
+        # cursor_anchored = SingleCursorLinkedToTrace(self.axes, tmp_ele[0], tmp_ele[1])
+        cursor_anchored = MultiCursorLinkedToTrace(self.axes, tmp_ele[0], tmp_ele[1],
+                                                   self.axes_bottom, tmp_speed[0], tmp_speed[1])
+        def onclick(event):
+            cursor_anchored.mouse_move(event)
+            self.draw()
+        self.mpl_connect('motion_notify_event', onclick)
         
-        self.fig.tight_layout()
+        # Alternative: cursor on both plots but not linked to the trace
+        #self.multi = MultiCursor(self.fig.canvas, (self.axes, self.axes_bottom), color='r', lw=1, vertOn=True, horizOn=True)
+        
+        self.fig.set_tight_layout(True)
         self.draw()
 
 
@@ -138,27 +148,38 @@ class MainWindow(QMainWindow):
         self.textGPXFileStructure.clear()
         
         # Try to recover the last used directory
-        old_directory = self.settings.value("lastdirectory")
+        old_directory = self.settings.value("lastdirectory", str)
+        # print "Last used directory: {}".format(old_directory)
+        
+        # Check if the setting exists
         if old_directory is not None:
-            old_directory = old_directory.toString()            
+            # Check if it's not empty
+            if old_directory:
+                old_directory = old_directory
+            else:
+                old_directory = "tracks"
         else:
             old_directory = "tracks"
         
         # Open the dialog box
-        #fname = QFileDialog.getOpenFileName(self, 'Open file', '/home')
-        filename = QFileDialog.getOpenFileName(caption='Open .gpx',
+        filename = QFileDialog.getOpenFileName(self,
+                                               caption='Open .gpx',
                                                directory=old_directory,
                                                filter="GPX files (*.gpx)")
-        directory = os.path.split(str(filename))
-        # Save the new directory in the application settings
-        self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
-        
-        self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename, usehtml=False)        
-        self.spinTrack.setRange(0, Ntracks-1)
-        self.spinTrack.setValue(longest_traseg[0])
-        self.spinSegment.setRange(0, Nsegments-1)
-        self.spinSegment.setValue(longest_traseg[1])
-        self.textGPXFileStructure.setText(infos)
+        if filename[0]:
+            directory = os.path.split(str(filename[0]))
+            # print "File to open: {}".format(filename[0])
+            # Save the new directory in the application settings
+            self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
+            
+            self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename[0], usehtml=False)
+            self.spinTrack.setRange(0, Ntracks-1)
+            self.spinTrack.setValue(longest_traseg[0])
+            self.spinSegment.setRange(0, Nsegments-1)
+            self.spinSegment.setValue(longest_traseg[1])
+            self.textGPXFileStructure.setText(infos)
+        else:
+            self.textGPXFileStructure.setText("No file was selected!")
         return
         
     def Go(self):
@@ -166,7 +187,7 @@ class MainWindow(QMainWindow):
         use_variance_smooth = self.checkUseVarianceSmooth.isChecked()
         
         # Temporarily change cursor
-        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         
         # Parse the GPX file
         gpx, coords, infos = ste.ParseGPX(self.rawgpx,
@@ -190,10 +211,10 @@ class MainWindow(QMainWindow):
         self.textOutput.append(infos)
 
         # Update embedded plots
-        self.plotElevation.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+        self.plotEmbedded.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
         
         # Restore original cursor
-        QtGui.QApplication.restoreOverrideCursor()
+        QApplication.restoreOverrideCursor()
         
         # Generate html plot
         balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
@@ -335,8 +356,8 @@ class MainWindow(QMainWindow):
         vBox_right.setSpacing(20)
         
         # Plot area
-        self.plotElevation = ElevationPlot(width=5, height=4, dpi=100)
-        self.plotElevation.setMinimumWidth(800)
+        self.plotEmbedded = EmbeddedPlot(width=5, height=4, dpi=100)
+        self.plotEmbedded.setMinimumWidth(800)
         
         # Add elevation/speed output fields
         #hBoxElevationDistance = QHBoxLayout()
@@ -349,9 +370,9 @@ class MainWindow(QMainWindow):
         #hBoxElevationDistance.addWidget(self.textElevation)
         
         # Add toolbar to the plot
-        self.mpl_toolbar = NavigationToolbar(self.plotElevation, self.scatola)
+        self.mpl_toolbar = NavigationToolbar(self.plotEmbedded, self.scatola)
         
-        vBox_right.addWidget(self.plotElevation)
+        vBox_right.addWidget(self.plotEmbedded)
         #vBox_right.addLayout(hBoxElevationDistance)
         vBox_right.addWidget(self.mpl_toolbar)
         
@@ -366,6 +387,7 @@ class MainWindow(QMainWindow):
         self.show()
 
 
+# Creating the application
 app = QApplication(sys.argv)
 main = MainWindow()
 
