@@ -238,13 +238,13 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, variance_smooth, pl
         lat_center = (np.max(state_means[:,0]) + np.min(state_means[:,0])) / 2.
         lon_center = (np.max(state_means[:,1]) + np.min(state_means[:,1])) / 2.
         map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)
-        map_osm.add_children(folium.PolyLine(orig_measurements[:,:2], 
-                                             color='#666666', weight = 4, opacity=1))
-        map_osm.add_children(folium.PolyLine(state_means[:,:2], 
-                                             color='#FF0000', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(orig_measurements[:,:2], 
+                                          color='#666666', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(state_means[:,:2], 
+                                          color='#FF0000', weight = 4, opacity=1))
         if variance_smooth:
-            map_osm.add_children(folium.PolyLine(state_means2[:,:2], 
-                                                 color='#00FF00', weight = 4, opacity=1))
+            map_osm.add_child(folium.PolyLine(state_means2[:,:2], 
+                                              color='#00FF00', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
@@ -780,7 +780,7 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 
                 highest_point_popup = folium.Popup(max_width = 1200).add_child(
                                         folium.Vega(json.load(open('plot_h.json')), width = 1000, height = 550))
-                map_osm.add_children(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
+                map_osm.add_child(folium.Marker([lat[marker_highest_point], lon[marker_highest_point]], 
                                                    # popup = "Highest point",
                                                    popup = highest_point_popup,
                                                    icon=folium.Icon(icon='cloud')))
@@ -804,12 +804,12 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 #).add_to(map_osm)
         
         # Plot start/finish markers
-        map_osm.add_children(folium.Marker([lat[0], lon[0]],
-                                               popup = "Start",
-                                               icon=folium.Icon(color='green', icon='circle-arrow-up')))
-        map_osm.add_children(folium.Marker([lat[-1], lon[-1]], 
-                                           popup = "Finish",
-                                           icon=folium.Icon(color='red', icon='circle-arrow-down')))
+        map_osm.add_child(folium.Marker([lat[0], lon[0]],
+                                        popup = "Start",
+                                        icon=folium.Icon(color='green', icon='circle-arrow-up')))
+        map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
+                                        popup = "Finish",
+                                        icon=folium.Icon(color='red', icon='circle-arrow-down')))
         
         # Plot data
         if onmapdata is not None:
@@ -858,9 +858,9 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 print "\nWARNING: RDP reduction activated with onmapdata, trace/polygons misallignments are possible"
             coords_array = rdp(coords_array, RDP_EPSILON)
             
-        map_osm.add_children(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
+        map_osm.add_child(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
         if coords_array2 is not None:
-            map_osm.add_children(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
+            map_osm.add_child(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
