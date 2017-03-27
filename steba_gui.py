@@ -1,11 +1,9 @@
 #!/usr/bin/python
 import sys
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QToolTip, 
-                             QPushButton, QApplication, qApp,
-                             QAction, QLabel, QFileDialog,
-                             QHBoxLayout, QVBoxLayout, QLineEdit, 
-                             QTextEdit, QCheckBox, QComboBox,
-                             QSpinBox, QSizePolicy)
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
+                             QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
+                             QCheckBox, QComboBox, QSpinBox, QSizePolicy)
+                             # QToolTip, QLineEdit, QPushButton
 from PyQt5 import QtGui, QtCore
 # from PyQt5.QtCore import QSettings
 import os
@@ -15,12 +13,11 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
+#from matplotlib.widgets import Cursor, MultiCursor
 import platform
 import ctypes
-#from matplotlib.widgets import Cursor, MultiCursor
 
 import steba as ste
-
 
 """
 Documentation
@@ -359,16 +356,6 @@ class MainWindow(QMainWindow):
         self.plotEmbedded = EmbeddedPlot(width=5, height=4, dpi=100)
         self.plotEmbedded.setMinimumWidth(800)
         
-        # Add elevation/speed output fields
-        #hBoxElevationDistance = QHBoxLayout()
-        #labelElevation = QLabel('Elevation at point:', self.main_frame)
-        #hBoxElevationDistance.addWidget(labelElevation)
-        #self.textElevation = QLineEdit(self.main_frame)
-        #self.textElevation.setReadOnly(True)
-        #self.textElevation.setFont(QFont("Courier New", FONTSIZE))
-        #self.textElevation.clear()
-        #hBoxElevationDistance.addWidget(self.textElevation)
-        
         # Add toolbar to the plot
         self.mpl_toolbar = NavigationToolbar(self.plotEmbedded, self.scatola)
         
@@ -404,4 +391,3 @@ main.show()
 sys.exit(app.exec_())
 # Alternative:
 # app.exec_()
-
