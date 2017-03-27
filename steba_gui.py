@@ -78,9 +78,9 @@ class MultiCursorLinkedToTrace(object):
             self.lx2.set_ydata(y2)
             self.ly2.set_xdata(x2)
             # Update annotations
-            self.txt1.set_text("{}m".format(y1))
+            self.txt1.set_text("{:.1f}m".format(y1))
             self.txt1.set_position((x1, y1))
-            self.txt2.set_text("{}m/s".format(y2))
+            self.txt2.set_text("{:.1f}km/h".format(y2))
             self.txt2.set_position((x2, y2))
         except:
             return
@@ -94,18 +94,18 @@ class EmbeddedPlot(FigureCanvas):
         #MyMplCanvas.__init__(self, *args, **kwargs)
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = self.fig.add_subplot(211)
-        self.axes_bottom = self.fig.add_subplot(212, sharex=self.axes)
+        self.top_axis = self.fig.add_subplot(211)
+        self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
         self.fig.set_facecolor("w")
         
-        self.axes.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.axes.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
-        self.axes.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.axes.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-        self.axes_bottom.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.axes_bottom.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
-        self.axes_bottom.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.axes_bottom.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+        self.top_axis.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.top_axis.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
+        self.top_axis.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.top_axis.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+        self.bottom_axis.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+        self.bottom_axis.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
+        self.bottom_axis.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+        self.bottom_axis.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
         self.fig.set_tight_layout(True)
         
         FigureCanvas.__init__(self, self.fig)
@@ -118,21 +118,21 @@ class EmbeddedPlot(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
-    def update_figure(self, measurements, state_means, segment):
-        self.axes, tmp_ele = ste.PlotElevation(self.axes, measurements, state_means)
-        self.axes_bottom, tmp_speed = ste.PlotSpeed(self.axes_bottom, segment)
+    def update_figure(self, measurements, state_means, state_vars, segment):
+        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means, state_vars)
+        self.bottom_axis, tmp_speed = ste.PlotSpeed(self.bottom_axis, segment)
         
         # Add cursor
-        # cursor_anchored = SingleCursorLinkedToTrace(self.axes, tmp_ele[0], tmp_ele[1])
-        cursor_anchored = MultiCursorLinkedToTrace(self.axes, tmp_ele[0], tmp_ele[1],
-                                                   self.axes_bottom, tmp_speed[0], tmp_speed[1])
+        # cursor_anchored = SingleCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1])
+        cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
+                                                   self.bottom_axis, tmp_speed[0], tmp_speed[1])
         def onclick(event):
             cursor_anchored.mouse_move(event)
             self.draw()
         self.mpl_connect('motion_notify_event', onclick)
         
         # Alternative: cursor on both plots but not linked to the trace
-        #self.multi = MultiCursor(self.fig.canvas, (self.axes, self.axes_bottom), color='r', lw=1, vertOn=True, horizOn=True)
+        #self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
         
         self.fig.set_tight_layout(True)
         self.draw()
@@ -199,7 +199,7 @@ class MainWindow(QMainWindow):
                                                                                      gpx,
                                                                                      method=self.comboBoxProcessingMethod.currentIndex(), 
                                                                                      use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                     variance_smooth=use_variance_smooth,
+                                                                                     use_variance_smooth=use_variance_smooth,
                                                                                      plot=False,
                                                                                      usehtml=False)
         self.textOutput.append(infos)
@@ -208,7 +208,7 @@ class MainWindow(QMainWindow):
         self.textOutput.append(infos)
 
         # Update embedded plots
-        self.plotEmbedded.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+        self.plotEmbedded.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
         
         # Restore original cursor
         QApplication.restoreOverrideCursor()
@@ -308,7 +308,7 @@ class MainWindow(QMainWindow):
         vBox2.addLayout(hBox21)
         
         # Use/don't use corrected altitude
-        self.checkUseSRTM = QCheckBox("Use SRTM corrected elevation")
+        self.checkUseSRTM = QCheckBox("Use SRTM corrected elevation (needs Internet)")
         self.checkUseSRTM.setChecked(False)
         vBox2.addWidget(self.checkUseSRTM)
         
