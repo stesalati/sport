@@ -274,11 +274,11 @@ class MainWindow(QMainWindow):
         
         # Main horizontal impagination
         hBox = QHBoxLayout()
-        hBox.setSpacing(20)
+        hBox.setSpacing(5)
         
         # Vertical left column
         vBox_left = QVBoxLayout()
-        vBox_left.setSpacing(20)
+        vBox_left.setSpacing(5)
         
         # 1st widget, text
         self.textGPXFileStructure = QTextEdit()
@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
         vBox2.addWidget(self.checkUseVarianceSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QCheckBox("Allow using RDP to reduce number of points displayed")
+        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed")
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
@@ -354,11 +354,17 @@ class MainWindow(QMainWindow):
         self.textOutput.clear()
         vBox_left.addWidget(self.textOutput)
         
-        hBox.addLayout(vBox_left)
+        # I put "vBox_left" inside a widget and then the widget inside "hBox"
+        # instead of just doing "hBox.addLayout(vBox_left) so I can set its
+        # maximum width.
+        vBox_left_widget = QWidget()
+        vBox_left_widget.setLayout(vBox_left)
+        vBox_left_widget.setMaximumWidth(350)
+        hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
         vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(20)
+        vBox_right.setSpacing(5)
         
         # Plot area
         self.plotEmbedded = EmbeddedPlot(width=5, height=4, dpi=100)
