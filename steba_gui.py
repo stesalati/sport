@@ -160,9 +160,9 @@ class MainWindow(QMainWindow):
         
         # Open the dialog box
         filename = QFileDialog.getOpenFileName(self,
-                                               caption='Open .gpx',
-                                               directory=old_directory,
-                                               filter="GPX files (*.gpx)")
+                                               'Open .gpx',
+                                               "tracks",
+                                               "GPX files (*.gpx)")
         if filename[0]:
             directory = os.path.split(str(filename[0]))
             # print "File to open: {}".format(filename[0])
@@ -236,7 +236,7 @@ class MainWindow(QMainWindow):
         QtCore.QCoreApplication.setApplicationName("Steba")
         self.settings = QtCore.QSettings(self)
         
-        # Toolbar
+        # Actions
         openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
         openfile.setShortcut("Ctrl+O")
         openfile.setStatusTip("Open file")
@@ -255,12 +255,20 @@ class MainWindow(QMainWindow):
         quitapp.setStatusTip("Quit application")
         quitapp.triggered.connect(qApp.quit)
         
+        # Status bar
         self.statusBar().show()
+        
+        # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        
+        # Menu bar
+        menubar = self.menuBar()
+        fileMenu = menubar.addMenu('&What do you wanna do?')
+        fileMenu.addAction(openfile)
         
         # Main widget (everything that's not toolbar, statusbar or menubar must be in this widget)
         self.scatola = QWidget()
@@ -368,6 +376,8 @@ class MainWindow(QMainWindow):
         # Setting hBox as main box
         self.scatola.setLayout(hBox)
         self.setCentralWidget(self.scatola)
+        
+        # Application settings
         self.setWindowTitle('STEBA GUI')
         self.setWindowIcon((QtGui.QIcon('icons/app.png')))
         self.setGeometry(100, 100, 1200, 700)
