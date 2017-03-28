@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
-#from matplotlib.widgets import Cursor, MultiCursor
+from matplotlib.widgets import Cursor, MultiCursor
 import platform
 import ctypes
 
@@ -31,6 +31,7 @@ PyQt5
 http://zetcode.com/gui/pyqt5/layout/
 http://zetcode.com/gui/pyqt5/dialogs/
 https://pythonspot.com/en/pyqt5-matplotlib/
+https://pythonspot.com/en/pyqt5/
 
 Plots
 http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
@@ -117,21 +118,25 @@ class EmbeddedPlot(FigureCanvas):
         FigureCanvas.setFocus(self)
         
     def update_figure(self, measurements, state_means, state_vars, segment):
+        
+        def onclick(event):
+            cursor_anchored.mouse_move(event)
+            self.draw()
+        
+        # Draw plots
         self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means, state_vars)
         self.bottom_axis, tmp_speed = ste.PlotSpeed(self.bottom_axis, segment)
         
         # Add cursor
-        # cursor_anchored = SingleCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1])
-        cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
-                                                   self.bottom_axis, tmp_speed[0], tmp_speed[1])
-        def onclick(event):
-            cursor_anchored.mouse_move(event)
-            self.draw()
-        self.mpl_connect('motion_notify_event', onclick)
-        
-        # Alternative: cursor on both plots but not linked to the trace
-        #self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
-        
+        if platform.system() == "Darwin":
+            # Cursor on both plots but not linked to the trace
+            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
+            
+        elif platform.system() == 'Windows':
+            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
+                                                       self.bottom_axis, tmp_speed[0], tmp_speed[1])
+            self.mpl_connect('motion_notify_event', onclick)
+            
         self.fig.set_tight_layout(True)
         self.draw()
 
