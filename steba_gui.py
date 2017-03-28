@@ -40,7 +40,7 @@ http://matplotlib.org/users/annotations.html
 
 FONTSIZE = 8
 PLOT_FONTSIZE = 9
- 
+
 class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
         # Axis 1
@@ -90,8 +90,6 @@ class MultiCursorLinkedToTrace(object):
 class EmbeddedPlot(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
     # Plot original/corrected altitude profile
-    #def __init__(self, *args, **kwargs):
-        #MyMplCanvas.__init__(self, *args, **kwargs)
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.top_axis = self.fig.add_subplot(211)
@@ -169,7 +167,7 @@ class MainWindow(QMainWindow):
             # Save the new directory in the application settings
             self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
             
-            self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename[0], usehtml=False)
+            self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename[0])
             self.spinTrack.setRange(0, Ntracks-1)
             self.spinTrack.setValue(longest_traseg[0])
             self.spinSegment.setRange(0, Nsegments-1)
@@ -180,54 +178,55 @@ class MainWindow(QMainWindow):
         return
         
     def Go(self):
-        # Read settings from GUI
-        use_variance_smooth = self.checkUseVarianceSmooth.isChecked()
-        
-        # Temporarily change cursor
-        QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        
-        # Parse the GPX file
-        gpx, coords, infos = ste.ParseGPX(self.rawgpx,
-                                          track_nr=int(self.spinTrack.value()),
-                                          segment_nr=int(self.spinSegment.value()),
-                                          use_srtm_elevation=bool(self.checkUseSRTM.isChecked()),
-                                          usehtml=False)
-        self.textOutput.setText(infos)
-        
-        # Kalman processing
-        coords, measurements, state_means, state_vars, infos = ste.ApplyKalmanFilter(coords,
-                                                                                     gpx,
-                                                                                     method=self.comboBoxProcessingMethod.currentIndex(), 
-                                                                                     use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                     use_variance_smooth=use_variance_smooth,
-                                                                                     plot=False,
-                                                                                     usehtml=False)
-        self.textOutput.append(infos)
-        
-        new_coords, new_gpx, infos = ste.SaveDataToCoordsAndGPX(coords, state_means, usehtml=False)
-        self.textOutput.append(infos)
-
-        # Update embedded plots
-        self.plotEmbedded.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
-        
-        # Restore original cursor
-        QApplication.restoreOverrideCursor()
-        
-        # Generate html plot
-        balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
-                       'elevation': np.asarray(new_coords['ele']),
-                       'speed': None}
-        ste.PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
-                      np.vstack((coords['lat'], coords['lon'])).T,
-                      onmapdata=None,
-                      balloondata=balloondata,
-                      rdp_reduction=self.checkUseRDP.isChecked())
-        
+        if self.rawgpx is not None:            
+            # Temporarily change cursor
+            QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+            
+            # Parse the GPX file
+            gpx, coords, infos = ste.ParseGPX(self.rawgpx,
+                                              track_nr=int(self.spinTrack.value()),
+                                              segment_nr=int(self.spinSegment.value()),
+                                              use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
+            self.textOutput.setText(infos)
+            
+            # Kalman processing
+            coords, measurements, state_means, state_vars, infos = ste.ApplyKalmanFilter(coords,
+                                                                                         gpx,
+                                                                                         method=self.comboBoxProcessingMethod.currentIndex(), 
+                                                                                         use_acceleration=self.checkUseAcceleration.isChecked(),
+                                                                                         use_variance_smooth=self.checkUseVarianceSmooth.isChecked(),
+                                                                                         plot=False)
+            self.textOutput.append(infos)
+            
+            new_coords, new_gpx, infos = ste.SaveDataToCoordsAndGPX(coords, state_means)
+            self.textOutput.append(infos)
+    
+            # Update embedded plots
+            self.plotEmbedded.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+            
+            # Restore original cursor
+            QApplication.restoreOverrideCursor()
+            
+            # Generate html plot
+            balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
+                           'elevation': np.asarray(new_coords['ele']),
+                           'speed': None}
+            ste.PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
+                          np.vstack((coords['lat'], coords['lon'])).T,
+                          onmapdata=None,
+                          balloondata=balloondata,
+                          rdp_reduction=self.checkUseRDP.isChecked())
+        else:
+            self.textGPXFileStructure.setText("You need to open a .gpx file before!")
         return
 
     def __init__(self, parent=None):
         super(MainWindow, self).__init__()
+        self.initVariables()
         self.initUI()
+        
+    def initVariables(self):
+        self.rawgpx = None
         
     def initUI(self):        
         # Application Settings
@@ -326,7 +325,8 @@ class MainWindow(QMainWindow):
         hBoxProcessingMethod.addWidget(labelProcessingMethod)
         self.comboBoxProcessingMethod = QComboBox()
         self.comboBoxProcessingMethod.addItem("Just use available data")
-        self.comboBoxProcessingMethod.addItem("Resample at 1Hz")
+        self.comboBoxProcessingMethod.addItem("Fill all gaps at T=1s (resample)")
+        self.comboBoxProcessingMethod.addItem("Fill only smaller gaps at T=1s")
         hBoxProcessingMethod.addWidget(self.comboBoxProcessingMethod)
         vBox2.addLayout(hBoxProcessingMethod)
         
