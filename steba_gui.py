@@ -2,7 +2,7 @@
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSpinBox, QSizePolicy)
+                             QCheckBox, QComboBox, QSpinBox, QSizePolicy, QTabWidget)
                              # QToolTip, QLineEdit, QPushButton
 from PyQt5 import QtGui, QtCore
 # from PyQt5.QtCore import QSettings
@@ -88,25 +88,13 @@ class MultiCursorLinkedToTrace(object):
         plt.draw()
 
 
-class EmbeddedPlot(FigureCanvas):
-    """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
-    # Plot original/corrected altitude profile
+class EmbeddedPlot_ElevationSpeed(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.top_axis = self.fig.add_subplot(211)
         self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
         self.fig.set_facecolor("w")
-        
-        self.top_axis.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.top_axis.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
-        self.top_axis.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.top_axis.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-        self.bottom_axis.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-        self.bottom_axis.set_ylabel("Speed (m/s)", fontsize=PLOT_FONTSIZE)
-        self.bottom_axis.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-        self.bottom_axis.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
         self.fig.set_tight_layout(True)
-        
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
         FigureCanvas.setSizePolicy(self,
@@ -117,29 +105,98 @@ class EmbeddedPlot(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
-    def update_figure(self, measurements, state_means, state_vars, segment):
-        
+    def update_figure(self, measurements, state_means, segment):
+        # Draw plots
+        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means)
+        self.bottom_axis, tmp_speed = ste.PlotSpeed(self.bottom_axis, segment)
+        # Add cursor
         def onclick(event):
             cursor_anchored.mouse_move(event)
             self.draw()
-        
-        # Draw plots
-        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means, state_vars)
-        self.bottom_axis, tmp_speed = ste.PlotSpeed(self.bottom_axis, segment)
-        
-        # Add cursor
         if platform.system() == "Darwin":
             # Cursor on both plots but not linked to the trace
             self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
-            
         elif platform.system() == 'Windows':
             cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
                                                        self.bottom_axis, tmp_speed[0], tmp_speed[1])
             self.mpl_connect('motion_notify_event', onclick)
-            
+        # Draw
+        self.fig.set_tight_layout(True)
+        self.draw()
+        
+class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.top_axis = self.fig.add_subplot(211)
+        self.bottom_axis = self.fig.add_subplot(212)#, sharex=self.top_axis)
+        self.fig.set_facecolor("w")
+        self.fig.set_tight_layout(True)
+        FigureCanvas.__init__(self, self.fig)
+        self.setParent(parent)
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Expanding,
+                                   QSizePolicy.Expanding)
+        FigureCanvas.updateGeometry(self)
+        FigureCanvas.setFocusPolicy(self,
+                                    QtCore.Qt.StrongFocus)
+        FigureCanvas.setFocus(self)
+        
+    def update_figure(self, measurements, state_means, state_vars):
+        # Draw plots
+        self.top_axis, tmp_coords = ste.PlotCoordinates(self.top_axis, state_means)
+        self.bottom_axis, tmp_coordsvar = ste.PlotCoordinatesVariance(self.bottom_axis, state_means, state_vars)
+        # Add cursor
+        """
+        def onclick(event):
+            cursor_anchored.mouse_move(event)
+            self.draw()
+        if platform.system() == "Darwin":
+            # Cursor on both plots but not linked to the trace
+            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
+        elif platform.system() == 'Windows':
+            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
+                                                       self.bottom_axis, tmp_speed[0], tmp_speed[1])
+            self.mpl_connect('motion_notify_event', onclick)
+        """
+        # Draw
         self.fig.set_tight_layout(True)
         self.draw()
 
+class EmbeddedPlot_ElevationVariance(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.top_axis = self.fig.add_subplot(211)
+        self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
+        self.fig.set_facecolor("w")
+        self.fig.set_tight_layout(True)
+        FigureCanvas.__init__(self, self.fig)
+        self.setParent(parent)
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Expanding,
+                                   QSizePolicy.Expanding)
+        FigureCanvas.updateGeometry(self)
+        FigureCanvas.setFocusPolicy(self,
+                                    QtCore.Qt.StrongFocus)
+        FigureCanvas.setFocus(self)
+        
+    def update_figure(self, measurements, state_means, state_vars):
+        # Draw plots
+        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means)
+        self.bottom_axis, tmp_elevar = ste.PlotElevationVariance(self.bottom_axis, state_means, state_vars)
+        # Add cursor
+        def onclick(event):
+            cursor_anchored.mouse_move(event)
+            self.draw()
+        if platform.system() == "Darwin":
+            # Cursor on both plots but not linked to the trace
+            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
+        elif platform.system() == 'Windows':
+            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
+                                                       self.bottom_axis, tmp_elevar[0], tmp_elevar[1])
+            self.mpl_connect('motion_notify_event', onclick)
+        # Draw
+        self.fig.set_tight_layout(True)
+        self.draw()
 
 class MainWindow(QMainWindow):
     
@@ -199,7 +256,7 @@ class MainWindow(QMainWindow):
                                                                                          gpx,
                                                                                          method=self.comboBoxProcessingMethod.currentIndex(), 
                                                                                          use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                         use_variance_smooth=self.checkUseVarianceSmooth.isChecked(),
+                                                                                         extra_smooth=self.checkExtraSmooth.isChecked(),
                                                                                          plot=False)
             self.textOutput.append(infos)
             
@@ -207,7 +264,9 @@ class MainWindow(QMainWindow):
             self.textOutput.append(infos)
     
             # Update embedded plots
-            self.plotEmbedded.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+            self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+            self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
+            self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
             
             # Restore original cursor
             QApplication.restoreOverrideCursor()
@@ -233,7 +292,7 @@ class MainWindow(QMainWindow):
     def initVariables(self):
         self.rawgpx = None
         
-    def initUI(self):        
+    def initUI(self):
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Steba")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
@@ -341,9 +400,9 @@ class MainWindow(QMainWindow):
         vBox2.addWidget(self.checkUseAcceleration)
         
         # Use/don't use variance smooth
-        self.checkUseVarianceSmooth = QCheckBox("Use variance smooth")
-        self.checkUseVarianceSmooth.setChecked(False)
-        vBox2.addWidget(self.checkUseVarianceSmooth)
+        self.checkExtraSmooth = QCheckBox("Extra smooth")
+        self.checkExtraSmooth.setChecked(False)
+        vBox2.addWidget(self.checkExtraSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
         self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed")
@@ -368,21 +427,83 @@ class MainWindow(QMainWindow):
         hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
+        tab = QTabWidget()
+        
+        # Tab 1: Summary: elevation and speed
+        tab1 = QWidget()
+        # The tab layout
         vBox_right = QVBoxLayout()
         vBox_right.setSpacing(5)
-        
         # Plot area
-        self.plotEmbedded = EmbeddedPlot(width=5, height=4, dpi=100)
-        self.plotEmbedded.setMinimumWidth(800)
-        
+        self.plotEmbedded1 = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100)
+        self.plotEmbedded1.setMinimumWidth(800)
         # Add toolbar to the plot
-        self.mpl_toolbar = NavigationToolbar(self.plotEmbedded, self.scatola)
+        self.mpl_toolbar1 = NavigationToolbar(self.plotEmbedded1, self.scatola)
+        # Add widgets to the layout
+        vBox_right.addWidget(self.plotEmbedded1)
+        vBox_right.addWidget(self.mpl_toolbar1)
+        # Associate the layout to the tab
+        tab1.setLayout(vBox_right)
         
-        vBox_right.addWidget(self.plotEmbedded)
-        #vBox_right.addLayout(hBoxElevationDistance)
-        vBox_right.addWidget(self.mpl_toolbar)
+        # Tab 2: Coordinates and variance
+        tab2 = QWidget()
+        # The tab layout
+        vBox_right = QVBoxLayout()
+        vBox_right.setSpacing(5)
+        # Plot area
+        self.plotEmbedded2 = EmbeddedPlot_CoordinatesVariance(width=5, height=4, dpi=100)
+        self.plotEmbedded2.setMinimumWidth(800)
+        # Add toolbar to the plot
+        self.mpl_toolbar2 = NavigationToolbar(self.plotEmbedded2, self.scatola)
+        # Add widgets to the layout
+        vBox_right.addWidget(self.plotEmbedded2)
+        vBox_right.addWidget(self.mpl_toolbar2)
+        # Associate the layout to the tab
+        tab2.setLayout(vBox_right)
         
-        hBox.addLayout(vBox_right)
+        # Tab 3: Elevation and variance
+        tab3 = QWidget()
+        # The tab layout
+        vBox_right = QVBoxLayout()
+        vBox_right.setSpacing(5)
+        # Plot area
+        self.plotEmbedded3 = EmbeddedPlot_ElevationVariance(width=5, height=4, dpi=100)
+        self.plotEmbedded3.setMinimumWidth(800)
+        # Add toolbar to the plot
+        self.mpl_toolbar3 = NavigationToolbar(self.plotEmbedded3, self.scatola)
+        # Add widgets to the layout
+        vBox_right.addWidget(self.plotEmbedded3)
+        vBox_right.addWidget(self.mpl_toolbar3)
+        # Associate the layout to the tab
+        tab3.setLayout(vBox_right)
+        
+        """
+        # Tab 4: Speed and variance
+        tab4 = QWidget()
+        # The tab layout
+        vBox_right = QVBoxLayout()
+        vBox_right.setSpacing(5)
+        # Plot area
+        self.plotEmbedded4 = EmbeddedPlot_SpeedVariance(width=5, height=4, dpi=100)
+        self.plotEmbedded4.setMinimumWidth(800)
+        # Add toolbar to the plot
+        self.mpl_toolbar4 = NavigationToolbar(self.plotEmbedded4, self.scatola)
+        # Add widgets to the layout
+        vBox_right.addWidget(self.plotEmbedded4)
+        vBox_right.addWidget(self.mpl_toolbar4)
+        # Associate the layout to the tab
+        tab4.setLayout(vBox_right)
+        """
+        
+        # Associate tabs
+        tab.addTab(tab1, "Summary")
+        tab.addTab(tab2, "Coordinates and variance")
+        tab.addTab(tab3, "Elevation and variance")
+        """
+        tab.addTab(tab4, "Speed and variance")
+        """
+        
+        hBox.addWidget(tab)
         
         # Setting hBox as main box
         self.scatola.setLayout(hBox)
