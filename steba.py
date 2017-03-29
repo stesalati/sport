@@ -44,7 +44,7 @@ METHOD_2_MAX_GAP = 2 # seconds
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth, plot):
+def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot):
     """
     Documentation
     https://pykalman.github.io
@@ -94,32 +94,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth
                 gap_idx = pd.DatetimeIndex(start=coords.index[i]+datetime.timedelta(seconds=1),
                                            end=coords.index[i+1]-datetime.timedelta(seconds=1),
                                            freq='1S')
-                gap_coords = pd.DataFrame(coords, index=gap_idx)
-                coords = coords.append(gap_coords)
-                # print "Added {} points in between {} and {}".format(len(gap_idx), coords.index[i], coords.index[i+1])
-        # Sort all points        
-        coords = coords.sort_index()
-        # Fill the time_sec column
-        for i in range(0,len(coords)):
-            coords['time_sec'][i] = (coords.index[i] - datetime.datetime(2000,1,1,0,0,0)).total_seconds()
-        coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
-        # Create the "measurement" array and mask NaNs
-        measurements = coords[['lat','lon','ele']].values
-        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)\n".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
-        measurements = np.ma.masked_invalid(measurements)
-        
-    elif method == 21:
-        """
-        Method 21: fill the gaps between points too far away with NaNs.
-        The resulting sampling time is not constant
-        """
-        for i in range(0,len(coords)-1):
-            gap = coords.index[i+1] - coords.index[i]
-            GAP_CADENCE = 10 # seconds
-            if gap >= datetime.timedelta(seconds=GAP_CADENCE * 2):
-                gap_idx = pd.DatetimeIndex(start=coords.index[i]+datetime.timedelta(seconds=GAP_CADENCE),
-                                           end=coords.index[i+1]-datetime.timedelta(seconds=2),
-                                           freq='10S')
                 gap_coords = pd.DataFrame(coords, index=gap_idx)
                 coords = coords.append(gap_coords)
                 # print "Added {} points in between {} and {}".format(len(gap_idx), coords.index[i], coords.index[i+1])
@@ -247,13 +221,16 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth
     # in principle, but the problem comes when the majority of points that are
     # removed are those that were already masked, that, being artificially
     # added NaNs, the result doesn't change much.
-    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-    if use_variance_smooth:
-        coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
-        idx_var_too_high = np.where(coord_var > (10 * np.median(coord_var)))
-        infos = infos + "\nANALYZING RESULTING VARIANCE\n"
-        infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
-# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+    variance_coord = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
+    variance_ele = state_vars[:,2,2]
+    
+#    idx_var_too_high = np.where( coord_var > (np.mean(coord_var)+2*np.std(coord_var)) )
+#    infos = infos + "\nANALYZING RESULTING VARIANCE\n"
+#    infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
+
+#    COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+#    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
+#    if extra_smooth:
 #        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
 #        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
 #        
@@ -264,9 +241,9 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth
 #            state_means2, state_vars2 = kf.smooth(measurements) 
 #            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
 #        else:
-#            # ... then turn off use_variance_smooth cos it's not worth
+#            # ... then turn off extra_smooth cos it's not worth
 #            infos = infos + "It's not worth smoothing the signal further\n"
-#            use_variance_smooth = False
+#            extra_smooth = False
     
     if plot:
         # Plot original/corrected map
@@ -278,7 +255,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth
         map_osm.add_child(folium.PolyLine(state_means[:,:2], 
                                           color='#FF0000', weight = 4, opacity=1))
 # COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
-#        if use_variance_smooth:
+#        if extra_smooth:
 #            map_osm.add_child(folium.PolyLine(state_means2[:,:2], 
 #                                              color='#00FF00', weight = 4, opacity=1))
         
@@ -292,52 +269,16 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, use_variance_smooth
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
         
-        # Plot coordinates variance
-        if use_variance_smooth:
-            fig_coordvar, ax_coordvar = plt.subplots(2,1)
-            ax_coordvar[0].plot(coord_var, color="r", linestyle="-", marker="None")
-# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
-#            if use_variance_smooth:
-#                ax_coordvar[0].plot(coord_var2, color="g", linestyle="-", marker="None")
-            ax_coordvar[0].grid(True)
-            ax_coordvar[1].hist(np.log10(coord_var), bins=100)
-            ax_coordvar[1].grid(True)
-            fig_coordvar.show()
-        
         # Stats
         # print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
         # print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
             
     return coords, measurements, state_means, state_vars, infos
 
-def PlotElevation(ax, measurements, state_means, state_vars):
+def ComputeDistance(state_means):
     distance = np.cumsum(HaversineDistance(np.asarray(state_means[:,0]), np.asarray(state_means[:,1])))
     distance = np.hstack(([0.], distance))
-    coord_var = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
-    
-    ax_var = ax.twinx()
-    ax.cla()
-    ax_var.cla()
-    
-    ax_var.plot(distance, coord_var, color='0.9')
-    ax.plot(distance, measurements[:,2], color="#FFAAAA", linestyle="None", marker=".")
-    ax.plot(distance, state_means[:,2], color="#FF0000", linestyle="-", marker="None")
-    
-    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
-    ax.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
-    ax_var.set_ylabel("Variance", fontsize=PLOT_FONTSIZE)
-    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
-    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax_var.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    
-    l = ax.legend(['Measured', 'Estimated'])
-    ltext  = l.get_texts()
-    plt.setp(ltext, fontsize='small')
-    ax.grid(True)
-    ax.set_zorder(ax_var.get_zorder()+1)
-    ax.patch.set_visible(False)
-    
-    return ax, (distance, measurements[:,2])
+    return distance
     
 def SaveDataToCoordsAndGPX(coords, state_means):
     # Saving to a new coords
@@ -384,7 +325,72 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
     
     return new_coords, new_gpx, infos
-    
+
+def PlotElevation(ax, measurements, state_means):
+    # Compute distance
+    distance = ComputeDistance(state_means)
+    # Clean and plot
+    ax.cla()
+    ax.plot(distance, measurements[:,2], color="#FFAAAA", linestyle="None", marker=".")
+    ax.plot(distance, state_means[:,2], color="#FF0000", linestyle="-", marker="None")
+    # Style
+    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.grid(True)
+    # Legend
+    l = ax.legend(['Measured', 'Estimated'])
+    ltext  = l.get_texts()
+    plt.setp(ltext, fontsize='small')
+    return ax, (distance, measurements[:,2])
+
+def PlotElevationVariance(ax, state_means, state_vars):
+    # Compute distance
+    distance = ComputeDistance(state_means)
+    # Compute variance
+    variance_ele = state_vars[:,2,2]
+    # Clean and plot
+    ax.cla()
+    ax.plot(distance, variance_ele, color="#FF0000", linestyle="-", marker=".")
+    # Style
+    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Variance (m)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.grid(True)    
+    return ax, (distance, variance_ele)
+
+def PlotCoordinates(ax, state_means):
+    # Compute distance
+    distance = ComputeDistance(state_means)
+    # Clean and plot
+    ax.cla()
+    ax.plot(state_means[:,1], state_means[:,0], color="#FF0000", linestyle="-", marker=".")
+    # Style
+    ax.set_xlabel("Longitude (deg)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Latitude (deg)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.grid(True)
+    return ax, (distance, state_means[:,0], state_means[:,1])
+
+def PlotCoordinatesVariance(ax, state_means, state_vars):
+    # Compute distance
+    distance = ComputeDistance(state_means)
+    # Compute variance
+    variance_coord = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
+    # Clean and plot
+    ax.cla()
+    ax.plot(distance, variance_coord, color="#FF0000", linestyle="-", marker=".")
+    # Style
+    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Variance (deg)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.grid(True)    
+    return ax, (distance, variance_coord)
+
 def PlotSpeed(ax, gpx_segment):   
     # Compute speed and extract speed from gpx segment
     # (the speed is better this way, as it's computed in 3D and not only 2D, I think)
@@ -399,20 +405,23 @@ def PlotSpeed(ax, gpx_segment):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
+    # Compute distance
     distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
     distance = np.hstack(([0.], distance))
-        
+    
+    # Clean and plot
     ax.cla()
     #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
     ax.plot(distance, coords['speed']*3.6, color="r", linestyle="-", marker="None")
+    # Style
     ax.set_xlabel("Distance (m)")
     ax.set_ylabel("Speed (km/h)")
-    #ax.legend(['Measured', 'Estimated'])
+    ax.grid(True)
+    # Legend
+    #l = ax.legend(['Measured', 'Estimated'])
     l = ax.legend(['Estimated'])
     ltext  = l.get_texts()
     plt.setp(ltext, fontsize='small')
-    ax.grid(True)
-    
     return ax, (distance, coords['speed']*3.6)
 
 
@@ -967,8 +976,8 @@ def main(argv=None):
         coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
                                                                                  method=2, 
                                                                                  use_acceleration=False,
-                                                                                 use_variance_smooth=False,
-                                                                                 plot=False)
+                                                                                 extra_smooth=False,
+                                                                                 plot=True)
         print infos
         
         new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means)        
