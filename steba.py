@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 @author: Stefano Salati
 """
@@ -32,6 +32,18 @@ import platform
 from rdp import rdp
 import scipy.io as sio
 
+"""
+DOCUMENTATION
+https://pykalman.github.io
+https://github.com/pykalman/pykalman/tree/master/examples/standard
+https://github.com/pykalman/pykalman/blob/master/examples/standard/plot_em.py
+https://github.com/pykalman/pykalman/blob/master/examples/standard/plot_missing.py
+
+https://github.com/MathYourLife/Matlab-Tools/commit/246131c02babac27c52fd759ed08c00ae78ba989
+http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothing-with-irregular-time-steps
+https://github.com/balzer82/Kalman
+"""
+
 
 #==============================================================================
 # Constants
@@ -39,21 +51,13 @@ import scipy.io as sio
 FONTSIZE = 8 # pt
 PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
+KALMAN_N_ITERATIONS = 10
 
 
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot):
-    """
-    Documentation
-    https://pykalman.github.io
-    https://github.com/pykalman/pykalman/tree/master/examples/standard
-    https://github.com/MathYourLife/Matlab-Tools/commit/246131c02babac27c52fd759ed08c00ae78ba989
-    http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothing-with-irregular-time-steps
-    https://github.com/balzer82/Kalman
-    """
-    
+def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug_plot):    
     HTML_FILENAME = "osm_kalman.html"
     infos = ""
     
@@ -70,7 +74,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot)
         infos = infos + "Number of samples: {}\n".format(len(measurements))
         # This is not necessary here, I just add it so "measurements" is always a masked array,
         # regardless of the method used
-        measurements = np.ma.masked_invalid(measurements)
+        # measurements = np.ma.masked_invalid(measurements)
         
     elif method == 1:
         """
@@ -200,16 +204,31 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot)
     kf = KalmanFilter(transition_matrices=transition_matrices,
                       observation_matrices=observation_matrices,
                       # transition_covariance=transition_covariance,
-                      observation_covariance=observation_covariance,
+                      # observation_covariance=observation_covariance,
                       # transition_offsets=transition_offsets,
                       # observation_offsets=observation_offsets,
                       initial_state_mean=initial_state_mean,
                       initial_state_covariance=initial_state_covariance,
-                      em_vars=['transition_covariance'])
+                      em_vars=['transition_covariance',
+                               'observation_covariance',
+                               'transition_offsets',
+                               'observation_offsets',
+                               #'initial_state_mean',
+                               #'initial_state_covariance',
+                               ])
+        
+    # Learn good values for parameters named in `em_vars` using the EM algorithm
+#    loglikelihoods = np.zeros(KALMAN_N_ITERATIONS)
+#    cacca = np.random.rand(100,3)
+#    for i in range(len(loglikelihoods)):
+#        kf = kf.em(X=cacca, n_iter=1)
+#        loglikelihoods[i] = kf.loglikelihood(cacca)
+#        print loglikelihoods[i]
+#    print loglikelihoods
     
-    # Fit the transition covariance matrix
-    kf = kf.em(measurements, n_iter = 5, em_vars='transition_covariance')
-    
+    # Estimating missing parameters
+    kf = kf.em(X=measurements, n_iter=KALMAN_N_ITERATIONS)
+
     # Smoothing
     state_means, state_vars = kf.smooth(measurements)
     
@@ -245,7 +264,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot)
 #            infos = infos + "It's not worth smoothing the signal further\n"
 #            extra_smooth = False
     
-    if plot:
+    if debug_plot:
         # Plot original/corrected map
         lat_center = (np.max(state_means[:,0]) + np.min(state_means[:,0])) / 2.
         lon_center = (np.max(state_means[:,1]) + np.min(state_means[:,1])) / 2.
@@ -254,10 +273,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot)
                                           color='#666666', weight = 4, opacity=1))
         map_osm.add_child(folium.PolyLine(state_means[:,:2], 
                                           color='#FF0000', weight = 4, opacity=1))
-# COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
-#        if extra_smooth:
-#            map_osm.add_child(folium.PolyLine(state_means2[:,:2], 
-#                                              color='#00FF00', weight = 4, opacity=1))
         
         # Create and save map
         map_osm.save(HTML_FILENAME, close_file=False)
@@ -276,9 +291,19 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, plot)
     return coords, measurements, state_means, state_vars, infos
 
 def ComputeDistance(state_means):
-    distance = np.cumsum(HaversineDistance(np.asarray(state_means[:,0]), np.asarray(state_means[:,1])))
-    distance = np.hstack(([0.], distance))
-    return distance
+    # Horizontal distance
+    ddistance = HaversineDistance(np.asarray(state_means[:,0]), np.asarray(state_means[:,1]))
+    ddistance = np.hstack(([0.], ddistance))  
+    distance = np.cumsum(ddistance)
+    # Vertical distance
+    delevation = np.diff(np.asarray(state_means[:,2]))
+    delevation = np.hstack(([0.], delevation))    
+    # 3d distance
+    ddistance3d = np.sqrt(ddistance**2+delevation**2)
+    distance3d = np.cumsum(ddistance3d)
+    
+    #print "Total 2d distance: {}m, 3d distance: {}m".format(np.sum(ddistance), np.sum(ddistance3d))
+    return distance3d
     
 def SaveDataToCoordsAndGPX(coords, state_means):
     # Saving to a new coords
@@ -321,8 +346,7 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     
     infos = "STATS AFTER FILTERING\n"
     infos = infos + GiveStats(new_gpx.tracks[0].segments[0])
-    
-    #new_coords['speed'] = [p.speed for p in new_gpx.tracks[0].segments[0].points]
+    infos = infos + GiveMyStats(state_means)
     
     return new_coords, new_gpx, infos
 
@@ -424,6 +448,21 @@ def PlotSpeed(ax, gpx_segment):
     plt.setp(ltext, fontsize='small')
     return ax, (distance, coords['speed']*3.6)
 
+def PlotSpeedVariance(ax, state_means, state_vars):
+    # Compute distance
+    distance = ComputeDistance(state_means)
+    # Compute variance
+    variance_speed = np.trace(state_vars[:,3:5,3:5], axis1=1, axis2=2)
+    # Clean and plot
+    ax.cla()
+    ax.plot(distance, variance_speed, color="#FF0000", linestyle="-", marker=".")
+    # Style
+    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Variance (deg/s)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.grid(True)    
+    return ax, (distance, variance_speed)
 
 #==============================================================================
 # Homemade processing functions
@@ -657,32 +696,30 @@ def HaversineDistanceBetweenTwoPoints(lat1, lon1, lat2, lon2):
     c = 2*np.arctan2(np.sqrt(a), np.sqrt(1-a))
     d = 6371000*c
     return d
-
-def MyUphillDownhill(ele):
-    dele = np.diff(ele)
-    return np.sum(dele[np.where(dele > 0)]), np.sum(dele[np.where(dele < 0)])
-    
-def MyTotalDistance(lat, lon):
-    ds = HaversineDistance(lat, lon)
-    s = np.sum(ds)
-    return s
     
 def GiveStats(segment):
     info = segment.get_moving_data()
     m, s = divmod(info[0], 60)
     h, m = divmod(m, 60)
-    # string = "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km, Max speed: {:.1f}km/h".format(h, m, s, info[2]/1000., info[4]*3.6)
-    infos = "Moving      >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km\n".format(h, m, s, info[2]/1000.)
-    m, s = divmod(info[2], 60)
+    infos = "Total distance: {:.3f}km\n".format((info[2]+info[3])/1000)
+    infos = infos + "  Moving time: {:2.0f}:{:2.0f}:{:2.0f}, distance: {:.3f}km\n".format(h, m, s, info[2]/1000.)
+    m, s = divmod(info[1], 60)
     h, m = divmod(m, 60)
-    infos = infos + "Stopped     >>> Time: {:.0f}:{:.0f}:{:.0f}, Distance: {:.3f}km\n".format(h, m, s, info[3]/1000.)
+    infos = infos + "  Idle time: {:2.0f}:{:2.0f}:{:2.0f}, distance: {:.3f}km\n".format(h, m, s, info[3]/1000.)
     
     info = segment.get_elevation_extremes()
-    infos = infos + "Elevation   >>> {:.0f}m - {:.0f}m\n".format(info[0], info[1])
+    infos = infos + "Elevation: {:.0f}m <-> {:.0f}m\n".format(info[0], info[1])
     
     info = segment.get_uphill_downhill()
-    infos = infos + "Total climb >>> +{:.0f}m, -{:.0f}m\n".format(info[0], info[1])
+    infos = infos + "Climb: +{:.0f}m, -{:.0f}m\n".format(info[0], info[1])
     
+    return infos
+
+def GiveMyStats(state_means):
+    infos = "Total distance *: {:.3f}km\n".format(ComputeDistance(state_means)[-1]/1000)
+    delevation = np.diff(np.asarray(state_means[:,2]))
+    infos = infos + "Climb *: +{:.0f}m, {:.0f}m\n".format(np.sum(delevation[np.where(delevation > 0)]), 
+                                                                      np.sum(delevation[np.where(delevation < 0)]))
     return infos
     
 def FindQuadrant(deg):
@@ -930,7 +967,8 @@ def main(argv=None):
     # Arguments
     track_nr = 0
     segment_nr = 0
-    FILENAME = "tracks/2017-03-25 0908__20170325_0908 MTB ad Epen, Limburg.gpx"
+    # FILENAME = "tracks/2017-03-25 0908__20170325_0908 MTB ad Epen, Limburg.gpx"
+    FILENAME = "tracks/rinjani.gpx"
     
     if len(sys.argv) >= 2:
         if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
@@ -974,10 +1012,10 @@ def main(argv=None):
     #==============================================================================
     if True:
         coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
-                                                                                 method=2, 
+                                                                                 method=0, 
                                                                                  use_acceleration=False,
                                                                                  extra_smooth=False,
-                                                                                 plot=True)
+                                                                                 debug_plot=False)
         print infos
         
         new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means)        
@@ -985,7 +1023,7 @@ def main(argv=None):
         
         # Plot original/corrected altitude profile
         fig_alt, ax_alt = plt.subplots()
-        ax_alt = PlotElevation(ax_alt, measurements, state_means, state_vars)
+        ax_alt = PlotElevation(ax_alt, measurements, state_means)
         
         # Plot corrected speed
         fig_speed, ax_speed = plt.subplots()
