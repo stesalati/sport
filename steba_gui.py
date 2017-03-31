@@ -20,7 +20,7 @@ import ctypes
 import steba as ste
 
 """
-Documentation
+DOCUMENTATION
 
 PyQt4
 http://www.python.it/wiki/show/qttutorial/
@@ -197,6 +197,42 @@ class EmbeddedPlot_ElevationVariance(FigureCanvas):
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
+        
+class EmbeddedPlot_SpeedVariance(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.top_axis = self.fig.add_subplot(211)
+        self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
+        self.fig.set_facecolor("w")
+        self.fig.set_tight_layout(True)
+        FigureCanvas.__init__(self, self.fig)
+        self.setParent(parent)
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Expanding,
+                                   QSizePolicy.Expanding)
+        FigureCanvas.updateGeometry(self)
+        FigureCanvas.setFocusPolicy(self,
+                                    QtCore.Qt.StrongFocus)
+        FigureCanvas.setFocus(self)
+        
+    def update_figure(self, measurements, state_means, state_vars, segment):
+        # Draw plots
+        self.top_axis, tmp_speed = ste.PlotSpeed(self.top_axis, segment)
+        self.bottom_axis, tmp_speedvar = ste.PlotSpeedVariance(self.bottom_axis, state_means, state_vars)
+        # Add cursor
+        def onclick(event):
+            cursor_anchored.mouse_move(event)
+            self.draw()
+        if platform.system() == "Darwin":
+            # Cursor on both plots but not linked to the trace
+            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
+        elif platform.system() == 'Windows':
+            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_speed[0], tmp_speed[1],
+                                                       self.bottom_axis, tmp_speedvar[0], tmp_speedvar[1])
+            self.mpl_connect('motion_notify_event', onclick)
+        # Draw
+        self.fig.set_tight_layout(True)
+        self.draw()
 
 class MainWindow(QMainWindow):
     
@@ -257,7 +293,7 @@ class MainWindow(QMainWindow):
                                                                                          method=self.comboBoxProcessingMethod.currentIndex(), 
                                                                                          use_acceleration=self.checkUseAcceleration.isChecked(),
                                                                                          extra_smooth=self.checkExtraSmooth.isChecked(),
-                                                                                         plot=False)
+                                                                                         debug_plot=False)
             self.textOutput.append(infos)
             
             new_coords, new_gpx, infos = ste.SaveDataToCoordsAndGPX(coords, state_means)
@@ -267,6 +303,7 @@ class MainWindow(QMainWindow):
             self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
             self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
             self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
+            self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
             
             # Restore original cursor
             QApplication.restoreOverrideCursor()
@@ -423,7 +460,8 @@ class MainWindow(QMainWindow):
         # maximum width.
         vBox_left_widget = QWidget()
         vBox_left_widget.setLayout(vBox_left)
-        vBox_left_widget.setMaximumWidth(350)
+        vBox_left_widget.setMinimumWidth(300)
+        vBox_left_widget.setMaximumWidth(400)
         hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
@@ -477,7 +515,6 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab3.setLayout(vBox_right)
         
-        """
         # Tab 4: Speed and variance
         tab4 = QWidget()
         # The tab layout
@@ -493,15 +530,12 @@ class MainWindow(QMainWindow):
         vBox_right.addWidget(self.mpl_toolbar4)
         # Associate the layout to the tab
         tab4.setLayout(vBox_right)
-        """
         
         # Associate tabs
         tab.addTab(tab1, "Summary")
         tab.addTab(tab2, "Coordinates and variance")
         tab.addTab(tab3, "Elevation and variance")
-        """
         tab.addTab(tab4, "Speed and variance")
-        """
         
         hBox.addWidget(tab)
         
