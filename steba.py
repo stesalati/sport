@@ -114,7 +114,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         
     # Setup the Kalman filter & smoother
         
-    # Covariances: Position = 0.0001° = 11.1m, Altitude = 30m
+    # Covariances: Position = 0.0001deg = 11.1m, Altitude = 30m
     cov = {'coordinates': 1.,
            'elevation': 30.,
            'horizontal_velocity': 1e-4,
@@ -749,7 +749,7 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
     MAPPING_LIBRARY = "folium"
     # MAPPING_LIBRARY = "mplleaflet"
     
-    # RDP (Ramer–Douglas–Peucker) reduction
+    # RDP (Ramer Douglas Peucker) reduction
     RDP_EPSILON = 1e-4
     
     # Unpacking coordinates

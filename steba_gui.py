@@ -1,8 +1,11 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSpinBox, QSizePolicy, QTabWidget)
+                             QCheckBox, QComboBox, QSpinBox, QSizePolicy, QTabWidget,
+                             QListWidget, QListWidgetItem)
                              # QToolTip, QLineEdit, QPushButton
 from PyQt5 import QtGui, QtCore
 # from PyQt5.QtCore import QSettings
@@ -389,6 +392,14 @@ class MainWindow(QMainWindow):
         
         self.textGPXFileStructure.setMaximumHeight(150)
         vBox_left.addWidget(self.textGPXFileStructure)
+        
+        # 2nd vertical box, a list
+        self.tracklist = QListWidget()
+        item1 = QListWidgetItem('Example trace 1')
+        item2 = QListWidgetItem('Example trace 2')
+        self.tracklist.addItem(item1)
+        self.tracklist.addItem(item2)
+        vBox_left.addWidget(self.tracklist)
         
         # 2nd vertical box, containing several horizontal boxes, one for each setting
         vBox2 = QVBoxLayout()
