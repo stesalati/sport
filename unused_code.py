@@ -143,3 +143,28 @@ def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, u
     mpld3.show()
     
     return fig
+
+
+
+## Use mapleaflet instead of folium as map plotting library (simpler but more limited)
+if MAPPING_LIBRARY == "mplleaflet":
+    # Creating figure
+    fig, ax = plt.subplots()
+    
+    # Plot trace
+    ax.plot(lon, lat, 'k', linewidth = 4)
+    if coords_array2 is not None:
+        ax.plot(lon2, lat2, 'r', linewidth = 4)
+    
+    # Plot data
+    if onmapdata is not None:
+        for col in range(M):
+            tmp_lon = lon[1:] + distances[col][0]
+            tmp_lat = lat[1:] + distances[col][1]
+            tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
+            tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
+            tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
+            ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
+        
+    # Plot on OSM
+    mplleaflet.show(fig = ax.figure, path=HTML_FILENAME)
