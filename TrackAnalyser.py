@@ -1,10 +1,14 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+"""
+@author: Stefano Salati
+@mail: stef.salati@gmail.com
+"""
 
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSpinBox, QSizePolicy, QTabWidget,
+                             QCheckBox, QComboBox, QSizePolicy, QTabWidget,
                              QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
                              # QToolTip, QLineEdit, QPushButton
 from PyQt5 import QtGui, QtCore
@@ -16,11 +20,11 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.widgets import Cursor, MultiCursor
+from matplotlib.widgets import MultiCursor#, Cursor
 import platform
 import ctypes
 
-import steba as bombo
+import bombo as bombo
 
 """
 TODO
@@ -116,6 +120,10 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, segment):
         # Draw plots
         self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
@@ -151,6 +159,10 @@ class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
         FigureCanvas.setFocusPolicy(self,
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
+        
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
         
     def update_figure(self, measurements, state_means, state_vars):
         # Draw plots
@@ -190,6 +202,10 @@ class EmbeddedPlot_ElevationVariance(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, state_vars):
         # Draw plots
         self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
@@ -226,6 +242,10 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, state_vars, segment):
         # Draw plots
         self.top_axis, tmp_speed = bombo.PlotSpeed(self.top_axis, segment)
@@ -245,6 +265,7 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
         self.fig.set_tight_layout(True)
         self.draw()
 
+
 class MainWindow(QMainWindow):
     
     def selectFileToOpen(self):
@@ -256,9 +277,6 @@ class MainWindow(QMainWindow):
                 return items.index(item)
             else:
                 return 0
-        
-        # Clear the file-structure text field
-#        self.textGPXFileStructure.clear()
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
@@ -287,7 +305,6 @@ class MainWindow(QMainWindow):
             
             # Open file and inspect what's inside
             gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename[0])
-#            self.textGPXFileStructure.setText(infos)
             
             # If there's more than one track or segment, ask how to proceed
             if (Ntracks > 1) or (Nsegments > 1):
@@ -302,16 +319,13 @@ class MainWindow(QMainWindow):
                 preprocessedgpx = gpxraw
                 listname = filename
             
-            # Append the list of open GPX files using the next available color
+            # Append the list of open GPX files using the next available color (that's the size of the list -1)
             self.gpxlist.append(preprocessedgpx)
             self.gpxnamelist.append(listname)
             newitem = QListWidgetItem(listname)
-            newitem.setBackground(QtGui.QColor(self.palette[len(self.gpxlist)]))
+            newitem.setBackground(QtGui.QColor(self.palette[len(self.gpxlist)-1]))
             self.tracklist.addItem(newitem)
             
-        else:
-#            pass
-            self.textGPXFileStructure.setText("No file was selected!")
         return
         
     def Go(self):
@@ -361,6 +375,11 @@ class MainWindow(QMainWindow):
                     self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
                     self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
                     self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+                else:
+                    self.plotEmbedded1.clear_figure()
+                    self.plotEmbedded2.clear_figure()
+                    self.plotEmbedded3.clear_figure()
+                    self.plotEmbedded4.clear_figure()
                 
                 # Create balloondata for the html plot
                 balloondata = {'distance': np.cumsum(bombo.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
@@ -413,7 +432,8 @@ class MainWindow(QMainWindow):
         self.gpxnamelist = list()
         self.gpxselectedlist = list()
         self.gpxselectednamelist = list()
-        self.palette = bombo.GeneratePalette(N=10)
+        self.palette = bombo.GeneratePalette(N=10) * 5 # replicated 5 times
+        #self.palette = ["#0000FF", "#00FF00", "#00FFFF", "#FF0000", "#FF00FF", "#FFFF00", "#FFFFFF"] # test palette
         self.selectedpalette = list()
         
         self.proc_coords = list()
@@ -428,7 +448,6 @@ class MainWindow(QMainWindow):
         self.proc_balloondata = list()
         
     def initUI(self):
-        
         def selection_changed():
             # Retrieve selected items
             # selecteditems = self.tracklist.selectedItems()
@@ -494,15 +513,6 @@ class MainWindow(QMainWindow):
         # Vertical left column
         vBox_left = QVBoxLayout()
         vBox_left.setSpacing(5)
-        
-        # 1st widget, text
-#        self.textGPXFileStructure = QTextEdit()
-#        self.textGPXFileStructure.setReadOnly(True)
-#        self.textGPXFileStructure.setFont(QtGui.QFont("Courier New", FONTSIZE))
-#        self.textGPXFileStructure.clear()
-#        
-#        self.textGPXFileStructure.setMaximumHeight(150)
-#        vBox_left.addWidget(self.textGPXFileStructure)
         
         # 1st vertical box, a list
         self.tracklist = QListWidget()
