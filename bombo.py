@@ -1,14 +1,9 @@
-
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 """
 @author: Stefano Salati
+@mail: stef.salati@gmail.com
 """
-# %matplotlib qt to plot in a different window
-
-# DOCUMENTATION
-# https://github.com/FlorianWilhelm/gps_data_with_python
-# https://github.com/FlorianWilhelm/gps_data_with_python/tree/master/notebooks
-# http://nbviewer.jupyter.org/format/slides/github/FlorianWilhelm/gps_data_with_python/blob/master/talk.ipynb#/8/2
-# http://www.trackprofiler.com/gpxpy/index.html
 
 import numpy as np
 from scipy import signal, fftpack
@@ -35,6 +30,13 @@ import colorsys
 
 """
 DOCUMENTATION
+%matplotlib qt to plot in a different window
+
+https://github.com/FlorianWilhelm/gps_data_with_python
+https://github.com/FlorianWilhelm/gps_data_with_python/tree/master/notebooks
+http://nbviewer.jupyter.org/format/slides/github/FlorianWilhelm/gps_data_with_python/blob/master/talk.ipynb#/8/2
+http://www.trackprofiler.com/gpxpy/index.html
+
 https://pykalman.github.io
 https://github.com/pykalman/pykalman/tree/master/examples/standard
 https://github.com/pykalman/pykalman/blob/master/examples/standard/plot_em.py
@@ -62,8 +64,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     HTML_FILENAME = "osm_kalman.html"
     infos = ""
     
-    # Method is used to artificially increase the number of points and see how
-    # the Kalman filter behaves in between breakpoints
     orig_measurements = coords[['lat','lon','ele']].values
     if method == 0:
         """
@@ -205,13 +205,13 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     kf = KalmanFilter(transition_matrices=transition_matrices,
                       observation_matrices=observation_matrices,
                       # transition_covariance=transition_covariance,
-                      # observation_covariance=observation_covariance,
+                      observation_covariance=observation_covariance,
                       # transition_offsets=transition_offsets,
                       # observation_offsets=observation_offsets,
                       initial_state_mean=initial_state_mean,
                       initial_state_covariance=initial_state_covariance,
                       em_vars=['transition_covariance',
-                               'observation_covariance',
+                               #'observation_covariance',
                                'transition_offsets',
                                'observation_offsets',
                                #'initial_state_mean',
@@ -243,27 +243,29 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     # added NaNs, the result doesn't change much.
     variance_coord = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
     variance_ele = state_vars[:,2,2]
+        
+    """
+    COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
+    idx_var_too_high = np.where( coord_var > (np.mean(coord_var)+2*np.std(coord_var)) )
+    infos = infos + "\nANALYZING RESULTING VARIANCE\n"
+    infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
     
-#    idx_var_too_high = np.where( coord_var > (np.mean(coord_var)+2*np.std(coord_var)) )
-#    infos = infos + "\nANALYZING RESULTING VARIANCE\n"
-#    infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
-
-#    COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
-#    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-#    if extra_smooth:
-#        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
-#        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
-#        
-#        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
-#            # ... then it's worth continuing
-#            infos = infos + "It's worth smoothing the signal further\n"
-#            measurements.mask[idx_var_too_high, :] = True
-#            state_means2, state_vars2 = kf.smooth(measurements) 
-#            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
-#        else:
-#            # ... then turn off extra_smooth cos it's not worth
-#            infos = infos + "It's not worth smoothing the signal further\n"
-#            extra_smooth = False
+    if extra_smooth:
+        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
+        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
+        
+        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
+            # ... then it's worth continuing
+            infos = infos + "It's worth smoothing the signal further\n"
+            measurements.mask[idx_var_too_high, :] = True
+            state_means2, state_vars2 = kf.smooth(measurements) 
+            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
+        else:
+            # ... then turn off extra_smooth cos it's not worth
+            infos = infos + "It's not worth smoothing the signal further\n"
+            extra_smooth = False
+    """
     
     if debug_plot:
         # Plot original/corrected map
@@ -284,10 +286,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         elif platform.system() == 'Windows':
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
-        
-        # Stats
-        # print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
-        # print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
             
     return coords, measurements, state_means, state_vars, infos
 
@@ -781,8 +779,6 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
     http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
     Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
     """
-    
-    print coords_palette
     
     # Mapping parameters
     HTML_FILENAME = "osm.html"
