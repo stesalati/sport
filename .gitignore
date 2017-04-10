@@ -4,5 +4,8 @@
 # Generated HTML files
 *.html
 
+# Generated MATLAB files
+*.mat
+
 # Pyc
 *.pyc
