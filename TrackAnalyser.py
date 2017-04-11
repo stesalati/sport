@@ -142,6 +142,17 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.fig.set_tight_layout(True)
         self.draw()
         
+    def update_figure_multiple_tracks(self, measurements_list, state_means_list, gpx_list):
+        # Draw plots
+        for i, measurements in enumerate(measurements_list):
+            state_means = state_means_list[i]
+            gpx = gpx_list[i]
+            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
+            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, gpx.tracks[0].segments[0])
+        # Draw
+        self.fig.set_tight_layout(True)
+        self.draw()
+        
 class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
@@ -374,21 +385,10 @@ class MainWindow(QMainWindow):
                                                                                                debug_plot=False)
                 self.textOutput.append(infos)
                 
+                # Save data in GPX structure to compute speed and elevations
                 new_coords, new_gpx, infos = bombo.SaveDataToCoordsAndGPX(coords, state_means)
                 self.textOutput.append(infos)
         
-                # Update embedded plots (only if just one track is selected, otherwise it becomes too messy)
-                if len(self.gpxselectedlist) == 1:
-                    self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
-                    self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
-                    self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
-                    self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
-                else:
-                    self.plotEmbedded1.clear_figure()
-                    self.plotEmbedded2.clear_figure()
-                    self.plotEmbedded3.clear_figure()
-                    self.plotEmbedded4.clear_figure()
-                
                 # Create balloondata for the html plot
                 balloondata = {'distance': np.cumsum(bombo.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
                                'elevation': np.asarray(new_coords['ele']),
@@ -419,6 +419,20 @@ class MainWindow(QMainWindow):
             
             # Restore original cursor
             QApplication.restoreOverrideCursor()
+            
+            # Generate embedded plots
+            if len(self.gpxselectedlist) == 1:
+                self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+                self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
+                self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
+                self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+            else:
+                # Commentato per adesso
+                # self.plotEmbedded1.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx)
+                self.plotEmbedded1.clear_figure()
+                self.plotEmbedded2.clear_figure()
+                self.plotEmbedded3.clear_figure()
+                self.plotEmbedded4.clear_figure()
             
             # Generate html plot
             # If only one track is selected, proceed with the complete output, otherwise just plot the traces
