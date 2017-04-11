@@ -1,11 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+"""
+@author: Stefano Salati
+@mail: stef.salati@gmail.com
+"""
 
 import sys
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSpinBox, QSizePolicy, QTabWidget,
-                             QListWidget, QListWidgetItem)
+                             QCheckBox, QComboBox, QSizePolicy, QTabWidget,
+                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
                              # QToolTip, QLineEdit, QPushButton
 from PyQt5 import QtGui, QtCore
 # from PyQt5.QtCore import QSettings
@@ -16,11 +20,18 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.widgets import Cursor, MultiCursor
+from matplotlib.widgets import MultiCursor#, Cursor
 import platform
 import ctypes
 
-import steba as ste
+import bombo as bombo
+
+"""
+TODO
+
+
+"""
+
 
 """
 DOCUMENTATION
@@ -108,10 +119,14 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, segment):
         # Draw plots
-        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means)
-        self.bottom_axis, tmp_speed = ste.PlotSpeed(self.bottom_axis, segment)
+        self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
+        self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, segment)
         # Add cursor
         def onclick(event):
             cursor_anchored.mouse_move(event)
@@ -123,6 +138,17 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
             cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
                                                        self.bottom_axis, tmp_speed[0], tmp_speed[1])
             self.mpl_connect('motion_notify_event', onclick)
+        # Draw
+        self.fig.set_tight_layout(True)
+        self.draw()
+        
+    def update_figure_multiple_tracks(self, measurements_list, state_means_list, gpx_list):
+        # Draw plots
+        for i, measurements in enumerate(measurements_list):
+            state_means = state_means_list[i]
+            gpx = gpx_list[i]
+            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
+            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, gpx.tracks[0].segments[0])
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
@@ -144,10 +170,14 @@ class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, state_vars):
         # Draw plots
-        self.top_axis, tmp_coords = ste.PlotCoordinates(self.top_axis, state_means)
-        self.bottom_axis, tmp_coordsvar = ste.PlotCoordinatesVariance(self.bottom_axis, state_means, state_vars)
+        self.top_axis, tmp_coords = bombo.PlotCoordinates(self.top_axis, state_means)
+        self.bottom_axis, tmp_coordsvar = bombo.PlotCoordinatesVariance(self.bottom_axis, state_means, state_vars)
         # Add cursor
         """
         def onclick(event):
@@ -182,10 +212,14 @@ class EmbeddedPlot_ElevationVariance(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, state_vars):
         # Draw plots
-        self.top_axis, tmp_ele = ste.PlotElevation(self.top_axis, measurements, state_means)
-        self.bottom_axis, tmp_elevar = ste.PlotElevationVariance(self.bottom_axis, state_means, state_vars)
+        self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
+        self.bottom_axis, tmp_elevar = bombo.PlotElevationVariance(self.bottom_axis, state_means, state_vars)
         # Add cursor
         def onclick(event):
             cursor_anchored.mouse_move(event)
@@ -218,10 +252,14 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
                                     QtCore.Qt.StrongFocus)
         FigureCanvas.setFocus(self)
         
+    def clear_figure(self):
+        self.top_axis.cla()
+        self.bottom_axis.cla()
+        
     def update_figure(self, measurements, state_means, state_vars, segment):
         # Draw plots
-        self.top_axis, tmp_speed = ste.PlotSpeed(self.top_axis, segment)
-        self.bottom_axis, tmp_speedvar = ste.PlotSpeedVariance(self.bottom_axis, state_means, state_vars)
+        self.top_axis, tmp_speed = bombo.PlotSpeed(self.top_axis, segment)
+        self.bottom_axis, tmp_speedvar = bombo.PlotSpeedVariance(self.bottom_axis, state_means, state_vars)
         # Add cursor
         def onclick(event):
             cursor_anchored.mouse_move(event)
@@ -237,11 +275,21 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
         self.fig.set_tight_layout(True)
         self.draw()
 
+
 class MainWindow(QMainWindow):
     
     def selectFileToOpen(self):
-        # Clear the file-structure text field
-        self.textGPXFileStructure.clear()
+        
+        def getPreProcessingChoice(self, filename, filestructure):
+            items = ("Choose the longest", "Merge all")
+            item, okPressed = QInputDialog.getItem(self,
+                                                   "Multiple tracks/segments",
+                                                   "File '" + filename + "' contains more than one track/segment\n\n" + infos + "\nWhat to do?",
+                                                   items, 0, False)
+            if okPressed and item:
+                return items.index(item)
+            else:
+                return 0
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
@@ -258,70 +306,152 @@ class MainWindow(QMainWindow):
             old_directory = "tracks"
         
         # Open the dialog box
-        filename = QFileDialog.getOpenFileName(self,
-                                               'Open .gpx',
-                                               "tracks",
-                                               "GPX files (*.gpx)")
-        if filename[0]:
-            directory = os.path.split(str(filename[0]))
-            # print "File to open: {}".format(filename[0])
-            # Save the new directory in the application settings
-            self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
+        fullfilename_list = QFileDialog.getOpenFileNames(self,
+                                                         'Open .gpx',
+                                                         "tracks",
+                                                         "GPX files (*.gpx)")
+        
+        # Process every selected file
+        for i, fullfilename in enumerate(fullfilename_list[0]):
+            # Process filename
+            directory, filename = os.path.split(str(fullfilename))
+            filename, fileextension = os.path.splitext(filename)
             
-            self.rawgpx, longest_traseg, Ntracks, Nsegments, infos = ste.LoadGPX(filename[0])
-            self.spinTrack.setRange(0, Ntracks-1)
-            self.spinTrack.setValue(longest_traseg[0])
-            self.spinSegment.setRange(0, Nsegments-1)
-            self.spinSegment.setValue(longest_traseg[1])
-            self.textGPXFileStructure.setText(infos)
-        else:
-            self.textGPXFileStructure.setText("No file was selected!")
+            # Save the new directory in the application settings (it only
+            # needs to be done once)
+            if i == 0:
+                self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
+            
+            # Open file and inspect what's inside
+            gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename)
+            
+            # If there's more than one track or segment, ask how to proceed
+            if (Ntracks > 1) or (Nsegments > 1):
+                preprocessingchoice = getPreProcessingChoice(self, filename, infos)
+                if preprocessingchoice == 0:
+                    preprocessedgpx = bombo.SelectOneTrackAndSegmentFromGPX(gpxraw, longest_traseg[0], longest_traseg[1])
+                    listname = filename + " (longest)"
+                elif preprocessingchoice == 1:
+                    preprocessedgpx = bombo.MergeAllTracksAndSegmentsFromGPX(gpxraw)
+                    listname = filename + " (merged)"
+            else:
+                preprocessedgpx = gpxraw
+                listname = filename
+            
+            # Append the list of open GPX files using the next available color (that's the size of the list -1)
+            self.gpxlist.append(preprocessedgpx)
+            self.gpxnamelist.append(listname)
+            newitem = QListWidgetItem(listname)
+            newitem.setBackground(QtGui.QColor(self.palette[len(self.gpxlist)-1]))
+            self.tracklist.addItem(newitem)
+            
         return
         
     def Go(self):
-        if self.rawgpx is not None:            
+        if len(self.gpxselectedlist) > 0:
             # Temporarily change cursor
             QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
             
-            # Parse the GPX file
-            gpx, coords, infos = ste.ParseGPX(self.rawgpx,
-                                              track_nr=int(self.spinTrack.value()),
-                                              segment_nr=int(self.spinSegment.value()),
-                                              use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
-            self.textOutput.setText(infos)
+            # Clear up global variables
+            self.proc_coords = []
+            self.proc_measurements = []
+            self.proc_state_means = []
+            self.proc_state_vars = []
+            self.proc_new_coords = []
+            self.proc_new_gpx = []
+            self.proc_infos = []
+            self.proc_coords_to_plot = []
+            self.proc_coords_to_plot2 = []
+            self.proc_balloondata = []
             
-            # Kalman processing
-            coords, measurements, state_means, state_vars, infos = ste.ApplyKalmanFilter(coords,
-                                                                                         gpx,
-                                                                                         method=self.comboBoxProcessingMethod.currentIndex(), 
-                                                                                         use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                         extra_smooth=self.checkExtraSmooth.isChecked(),
-                                                                                         debug_plot=False)
-            self.textOutput.append(infos)
-            
-            new_coords, new_gpx, infos = ste.SaveDataToCoordsAndGPX(coords, state_means)
-            self.textOutput.append(infos)
-    
-            # Update embedded plots
-            self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
-            self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
-            self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
-            self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+            # For every GPX file that is selected
+            self.textOutput.setText("")
+            for i, currentgpx in enumerate(self.gpxselectedlist):
+                self.textOutput.append("**** {} ****\n".format(self.gpxselectednamelist[i]))
+                
+                # Parse the GPX file
+                gpx, coords, infos = bombo.ParseGPX(currentgpx,
+                                                    track_nr=0,
+                                                    segment_nr=0,
+                                                    use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
+                self.textOutput.append(infos)
+                
+                # Kalman processing
+                coords, measurements, state_means, state_vars, infos = bombo.ApplyKalmanFilter(coords,
+                                                                                               gpx,
+                                                                                               method=self.comboBoxProcessingMethod.currentIndex(), 
+                                                                                               use_acceleration=self.checkUseAcceleration.isChecked(),
+                                                                                               extra_smooth=self.checkExtraSmooth.isChecked(),
+                                                                                               debug_plot=False)
+                self.textOutput.append(infos)
+                
+                # Save data in GPX structure to compute speed and elevations
+                new_coords, new_gpx, infos = bombo.SaveDataToCoordsAndGPX(coords, state_means)
+                self.textOutput.append(infos)
+        
+                # Create balloondata for the html plot
+                balloondata = {'distance': np.cumsum(bombo.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
+                               'elevation': np.asarray(new_coords['ele']),
+                               'speed': None}
+                
+                # Create extra data for the html plot (fully implemented in bombo, not here)
+                """
+                data = np.ones((len(lat_cleaned),2))
+                data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
+                data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
+                tangentdata = {'data': data,
+                               'sides': (0, 1),
+                               'palette': ('blue','red')}
+                """
+                
+                # Saverelevant output in global variables
+                self.proc_coords.append(coords)
+                self.proc_measurements.append(measurements)
+                self.proc_state_means.append(state_means)
+                self.proc_state_vars.append(state_vars)
+                self.proc_new_coords.append(new_coords)
+                self.proc_new_gpx.append(new_gpx)
+                self.proc_infos.append(infos)
+                self.proc_coords_to_plot.append(np.vstack((new_coords['lat'], new_coords['lon'])).T)
+                self.proc_coords_to_plot2.append(np.vstack((coords['lat'], coords['lon'])).T)
+                self.proc_balloondata.append(balloondata)
+                
             
             # Restore original cursor
             QApplication.restoreOverrideCursor()
             
+            # Generate embedded plots
+            if len(self.gpxselectedlist) == 1:
+                self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+                self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
+                self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
+                self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+            else:
+                # Commentato per adesso
+                # self.plotEmbedded1.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx)
+                self.plotEmbedded1.clear_figure()
+                self.plotEmbedded2.clear_figure()
+                self.plotEmbedded3.clear_figure()
+                self.plotEmbedded4.clear_figure()
+            
             # Generate html plot
-            balloondata = {'distance': np.cumsum(ste.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
-                           'elevation': np.asarray(new_coords['ele']),
-                           'speed': None}
-            ste.PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
-                          np.vstack((coords['lat'], coords['lon'])).T,
-                          onmapdata=None,
-                          balloondata=balloondata,
-                          rdp_reduction=self.checkUseRDP.isChecked())
+            # If only one track is selected, proceed with the complete output, otherwise just plot the traces
+            if len(self.gpxselectedlist) is 1:
+                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                coords_array2_list=self.proc_coords_to_plot2,
+                                coords_palette = self.selectedpalette,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
+                                rdp_reduction=self.checkUseRDP.isChecked())
+            else:
+                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                coords_array2_list=None,
+                                coords_palette = self.selectedpalette,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
+                                rdp_reduction=self.checkUseRDP.isChecked())
         else:
-            self.textGPXFileStructure.setText("You need to open a .gpx file before!")
+            self.textOutput.setText("You need to open a .gpx file before!")
         return
 
     def __init__(self, parent=None):
@@ -330,9 +460,41 @@ class MainWindow(QMainWindow):
         self.initUI()
         
     def initVariables(self):
-        self.rawgpx = None
+        self.gpxlist = list()
+        self.gpxnamelist = list()
+        self.gpxselectedlist = list()
+        self.gpxselectednamelist = list()
+        self.palette = bombo.GeneratePalette(N=10) * 5 # replicated 5 times
+        #self.palette = ["#0000FF", "#00FF00", "#00FFFF", "#FF0000", "#FF00FF", "#FFFF00", "#FFFFFF"] # test palette
+        self.selectedpalette = list()
+        
+        self.proc_coords = list()
+        self.proc_measurements = list()
+        self.proc_state_means = list()
+        self.proc_state_vars = list()
+        self.proc_new_coords = list()
+        self.proc_new_gpx = list()
+        self.proc_infos = list()
+        self.proc_coords_to_plot = list()
+        self.proc_coords_to_plot2 = list()
+        self.proc_balloondata = list()
         
     def initUI(self):
+        def selection_changed():
+            # Retrieve selected items
+            # selecteditems = self.tracklist.selectedItems()
+            selectedindexes = self.tracklist.selectedIndexes()
+            
+            # Adding the selected items to the processing list
+            self.gpxselectedlist[:] = []
+            self.gpxselectednamelist[:] = []
+            self.selectedpalette[:] = []
+            for i in selectedindexes:
+                # print str(i.text())
+                self.gpxselectedlist.append(self.gpxlist[i.row()])
+                self.gpxselectednamelist.append(self.gpxnamelist[i.row()])
+                self.selectedpalette.append(self.palette[i.row()])
+
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Steba")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
@@ -384,22 +546,11 @@ class MainWindow(QMainWindow):
         vBox_left = QVBoxLayout()
         vBox_left.setSpacing(5)
         
-        # 1st widget, text
-        self.textGPXFileStructure = QTextEdit()
-        self.textGPXFileStructure.setReadOnly(True)
-        self.textGPXFileStructure.setFont(QtGui.QFont("Courier New", FONTSIZE))
-        self.textGPXFileStructure.clear()
-        
-        self.textGPXFileStructure.setMaximumHeight(150)
-        vBox_left.addWidget(self.textGPXFileStructure)
-        
-        # 2nd vertical box, a list
+        # 1st vertical box, a list
         self.tracklist = QListWidget()
-        item1 = QListWidgetItem('Example trace 1')
-        item2 = QListWidgetItem('Example trace 2')
-        self.tracklist.addItem(item1)
-        self.tracklist.addItem(item2)
         vBox_left.addWidget(self.tracklist)
+        self.tracklist.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tracklist.itemSelectionChanged.connect(selection_changed)
         
         # 2nd vertical box, containing several horizontal boxes, one for each setting
         vBox2 = QVBoxLayout()
@@ -408,23 +559,6 @@ class MainWindow(QMainWindow):
         # Just the group label
         labelSettings = QLabel('Settings')
         vBox2.addWidget(labelSettings)
-        
-        # Track/segment selection
-        hBox21 = QHBoxLayout()
-        labelTrack = QLabel('Track/Segment')
-        hBox21.addWidget(labelTrack)
-        
-        self.spinTrack = QSpinBox()
-        self.spinTrack.setRange(0, 100)
-        self.spinTrack.setValue(0)
-        self.spinTrack.setSingleStep(1)
-        hBox21.addWidget(self.spinTrack)
-        self.spinSegment = QSpinBox()
-        self.spinSegment.setRange(0, 100)
-        self.spinSegment.setValue(0)
-        self.spinSegment.setSingleStep(1)
-        hBox21.addWidget(self.spinSegment)
-        vBox2.addLayout(hBox21)
         
         # Use/don't use corrected altitude
         self.checkUseSRTM = QCheckBox("Use SRTM corrected elevation (needs Internet)")

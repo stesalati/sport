@@ -1,14 +1,9 @@
-
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 """
 @author: Stefano Salati
+@mail: stef.salati@gmail.com
 """
-# %matplotlib qt to plot in a different window
-
-# DOCUMENTATION
-# https://github.com/FlorianWilhelm/gps_data_with_python
-# https://github.com/FlorianWilhelm/gps_data_with_python/tree/master/notebooks
-# http://nbviewer.jupyter.org/format/slides/github/FlorianWilhelm/gps_data_with_python/blob/master/talk.ipynb#/8/2
-# http://www.trackprofiler.com/gpxpy/index.html
 
 import numpy as np
 from scipy import signal, fftpack
@@ -31,9 +26,17 @@ import pandas as pd
 import platform
 from rdp import rdp
 import scipy.io as sio
+import colorsys
 
 """
 DOCUMENTATION
+%matplotlib qt to plot in a different window
+
+https://github.com/FlorianWilhelm/gps_data_with_python
+https://github.com/FlorianWilhelm/gps_data_with_python/tree/master/notebooks
+http://nbviewer.jupyter.org/format/slides/github/FlorianWilhelm/gps_data_with_python/blob/master/talk.ipynb#/8/2
+http://www.trackprofiler.com/gpxpy/index.html
+
 https://pykalman.github.io
 https://github.com/pykalman/pykalman/tree/master/examples/standard
 https://github.com/pykalman/pykalman/blob/master/examples/standard/plot_em.py
@@ -51,7 +54,7 @@ https://github.com/balzer82/Kalman
 FONTSIZE = 8 # pt
 PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
-KALMAN_N_ITERATIONS = 10
+KALMAN_N_ITERATIONS = 5
 
 
 #==============================================================================
@@ -61,8 +64,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     HTML_FILENAME = "osm_kalman.html"
     infos = ""
     
-    # Method is used to artificially increase the number of points and see how
-    # the Kalman filter behaves in between breakpoints
     orig_measurements = coords[['lat','lon','ele']].values
     if method == 0:
         """
@@ -204,13 +205,13 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     kf = KalmanFilter(transition_matrices=transition_matrices,
                       observation_matrices=observation_matrices,
                       # transition_covariance=transition_covariance,
-                      # observation_covariance=observation_covariance,
+                      observation_covariance=observation_covariance,
                       # transition_offsets=transition_offsets,
                       # observation_offsets=observation_offsets,
                       initial_state_mean=initial_state_mean,
                       initial_state_covariance=initial_state_covariance,
                       em_vars=['transition_covariance',
-                               'observation_covariance',
+                               #'observation_covariance',
                                'transition_offsets',
                                'observation_offsets',
                                #'initial_state_mean',
@@ -242,27 +243,29 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     # added NaNs, the result doesn't change much.
     variance_coord = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
     variance_ele = state_vars[:,2,2]
+        
+    """
+    COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
+    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
+    idx_var_too_high = np.where( coord_var > (np.mean(coord_var)+2*np.std(coord_var)) )
+    infos = infos + "\nANALYZING RESULTING VARIANCE\n"
+    infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
     
-#    idx_var_too_high = np.where( coord_var > (np.mean(coord_var)+2*np.std(coord_var)) )
-#    infos = infos + "\nANALYZING RESULTING VARIANCE\n"
-#    infos = infos + "Nr. points with high variance: {}\n".format(len(idx_var_too_high[0]))
-
-#    COMMENTED AWAITING TO CLARIFY WHAT TO DO HERE
-#    THRESHOLD_NR_POINTS_TO_RERUN_KALMAN = 10
-#    if extra_smooth:
-#        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
-#        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
-#        
-#        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
-#            # ... then it's worth continuing
-#            infos = infos + "It's worth smoothing the signal further\n"
-#            measurements.mask[idx_var_too_high, :] = True
-#            state_means2, state_vars2 = kf.smooth(measurements) 
-#            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
-#        else:
-#            # ... then turn off extra_smooth cos it's not worth
-#            infos = infos + "It's not worth smoothing the signal further\n"
-#            extra_smooth = False
+    if extra_smooth:
+        nr_further_points_to_mask = np.count_nonzero(np.logical_not(measurements.mask[idx_var_too_high,0]))
+        infos = infos + "Number of real points to be removed: {}\n".format(nr_further_points_to_mask)
+        
+        if nr_further_points_to_mask > THRESHOLD_NR_POINTS_TO_RERUN_KALMAN:
+            # ... then it's worth continuing
+            infos = infos + "It's worth smoothing the signal further\n"
+            measurements.mask[idx_var_too_high, :] = True
+            state_means2, state_vars2 = kf.smooth(measurements) 
+            coord_var2 = np.trace(state_vars2[:,:2,:2], axis1=1, axis2=2)
+        else:
+            # ... then turn off extra_smooth cos it's not worth
+            infos = infos + "It's not worth smoothing the signal further\n"
+            extra_smooth = False
+    """
     
     if debug_plot:
         # Plot original/corrected map
@@ -283,10 +286,6 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         elif platform.system() == 'Windows':
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
-        
-        # Stats
-        # print "Distance: %0.fm" % MyTotalDistance(state_means[:,0], state_means[:,1])
-        # print "Uphill: %.0fm, Dowhhill: %.0fm" % MyUphillDownhill(state_means[:,2])
             
     return coords, measurements, state_means, state_vars, infos
 
@@ -610,7 +609,7 @@ def LoadGPX(filename):
     id_longest_track = 0
     id_longest_segment = 0
     length_longest_segment = 0
-    infos = "GPX file structure:\n"
+    infos = ""
     for itra, track in enumerate(gpx.tracks):
         infos = infos + "Track {}\n".format(itra)
         # Check if this is the track with more segments
@@ -625,9 +624,36 @@ def LoadGPX(filename):
             infos = infos + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m\n".format(iseg, info[0]/60., info[2])
     
     return gpx, (id_longest_track, id_longest_segment), len(gpx.tracks), Nsegments, infos
+
+def SelectOneTrackAndSegmentFromGPX(igpx, chosentrack, chosensegment):
+    # Create a brand new gpx structure containing only the specified segment
+    ogpx = gpxpy.gpx.GPX()
+    ogpx.tracks.append(gpxpy.gpx.GPXTrack())
+    ogpx.tracks[0].segments.append(gpxpy.gpx.GPXTrackSegment())
+    ogpx.tracks[0].segments[0] = igpx.tracks[chosentrack].segments[chosensegment]
+    return ogpx
+
+def MergeAllTracksAndSegmentsFromGPX(igpx):
+    # Create a brand new gpx structure containing all the tracks/segments
+    ogpx = gpxpy.gpx.GPX()
+    ogpx.tracks.append(gpxpy.gpx.GPXTrack())
+    ogpx.tracks[0].segments.append(gpxpy.gpx.GPXTrackSegment())
+    
+    # Scroll all tracks and segments
+    for itra, track in enumerate(igpx.tracks):
+        for iseg, segment in enumerate(track.segments):
+            # print "T: {}, S: {}, P: {}".format(itra, iseg, len(segment.points))
+            for ipoi, point in enumerate(segment.points):
+                # Fill the vector
+                ogpx.tracks[0].segments[0].points.append(gpxpy.gpx.GPXTrackPoint(latitude=point.latitude,
+                                                                                 longitude=point.longitude,
+                                                                                 elevation=point.elevation,
+                                                                                 speed=None,
+                                                                                 time=point.time))
+    return ogpx
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
-    infos = "Loading track[{}] >>> segment [{}]\n".format(track_nr, segment_nr)
+    infos = "" #"Loading track[{}] >>> segment [{}]\n".format(track_nr, segment_nr)
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
             {'idx': i,
@@ -639,7 +665,7 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
-    infos = infos + "\nSTATS BASED ON THE GPX FILE\n"
+    infos = infos + "STATS BASED ON THE GPX FILE\n"
     infos = infos + GiveStats(segment)
     
     # https://github.com/tkrajina/srtm.py
@@ -734,115 +760,117 @@ def FindQuadrant(deg):
     n[np.where((deg < -270) & (deg >= -360) )] = 1
     return n
 
-def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction):
-    # Documentation
-    # https://www.youtube.com/watch?v=BwqBNpzQwJg
-    # http://matthiaseisen.com/pp/patterns/p0203/
-    # https://github.com/python-visualization/folium/tree/master/examples
-    # http://vincent.readthedocs.io/en/latest/quickstart.html
-    # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
-    # http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
-    # Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+def GeneratePalette(N=5):
+    SATURATION = 1.0
+    VALUE = 1.0
+    HSV_tuples = [(x*1.0/N, SATURATION, VALUE) for x in xrange(N)]
+    hex_out = []
+    for rgb in HSV_tuples:
+        rgb = map(lambda x: int(x*255),colorsys.hsv_to_rgb(*rgb))
+        hex_out.append("#" + "".join(map(lambda x: chr(x).encode('hex'),rgb)))
+    return hex_out
+
+def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata, balloondata_list, rdp_reduction):
+    """
+    Documentation
+    https://www.youtube.com/watch?v=BwqBNpzQwJg
+    http://matthiaseisen.com/pp/patterns/p0203/
+    https://github.com/python-visualization/folium/tree/master/examples
+    http://vincent.readthedocs.io/en/latest/quickstart.html
+    http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
+    http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
+    Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+    
+    http://www.digital-geography.com/tag/leaflet/#.WOyjfFWGOUk
+    
+    3D
+    http://nbviewer.jupyter.org/github/ocefpaf/folium_notebooks/blob/a68a89ae28587e6a9fbb21e7a1bd6042183a11bf/test_3D.ipynb
+    """
     
     # Mapping parameters
     HTML_FILENAME = "osm.html"
-    MAPPING_LIBRARY = "folium"
-    # MAPPING_LIBRARY = "mplleaflet"
     
     # RDP (Ramer Douglas Peucker) reduction
     RDP_EPSILON = 1e-4
     
-    # Unpacking coordinates
-    lat = coords_array[:,0]
-    lon = coords_array[:,1]
-    if coords_array2 is not None:
-        lat2 = coords_array2[:,0]
-        lon2 = coords_array2[:,1]
+    # Center coordinates
+    center_lat = list()
+    center_lon = list()
     
-    # Process data to plot them along the trace
-    if onmapdata is not None:
-        # Unpacking onmapdata
-        data = onmapdata['data']
-        sides = onmapdata['sides']
-        palette = onmapdata['palette']
-        # Determine the perpendicular axis for each pair of consecutive points
-        dtrace_lon = np.diff(lon)
-        dtrace_lat = np.diff(lat)
-        m = dtrace_lat/dtrace_lon
-        deg = np.arctan2(dtrace_lat, dtrace_lon) / (2*np.pi) * 360
-        m[np.where(m == 0)] = 0.0000001
-        m_p = -1/m
-        quad = FindQuadrant(deg+90)
-        
-        # For each data vectors (columns of data)
-        distances = list()
-        M = np.size(data, axis = 1)
-        for col in range(M):
-            tmp_x = data[1:,col] / np.sqrt(1+m_p**2)
-            tmp_y = tmp_x * m_p
-            tmp_side = sides[col]
-            
-            idx_quad_1 = np.where(quad == 1)
-            idx_quad_2 = np.where(quad == 2)
-            idx_quad_3 = np.where(quad == 3)
-            idx_quad_4 = np.where(quad == 4)
-            
-            if tmp_side == 0:
-                tmp_x[idx_quad_1] = tmp_x[idx_quad_1]
-                tmp_y[idx_quad_1] = tmp_y[idx_quad_1]
-                tmp_x[idx_quad_2] = tmp_x[idx_quad_2]
-                tmp_y[idx_quad_2] = tmp_y[idx_quad_2]
-                tmp_x[idx_quad_3] = -tmp_x[idx_quad_3]
-                tmp_y[idx_quad_3] = -tmp_y[idx_quad_3]
-                tmp_x[idx_quad_4] = -tmp_x[idx_quad_4]
-                tmp_y[idx_quad_4] = -tmp_y[idx_quad_4]
-            else:
-                tmp_x[idx_quad_1] = -tmp_x[idx_quad_1]
-                tmp_y[idx_quad_1] = -tmp_y[idx_quad_1]
-                tmp_x[idx_quad_2] = -tmp_x[idx_quad_2]
-                tmp_y[idx_quad_2] = -tmp_y[idx_quad_2]
-                tmp_x[idx_quad_3] = tmp_x[idx_quad_3]
-                tmp_y[idx_quad_3] = tmp_y[idx_quad_3]
-                tmp_x[idx_quad_4] = tmp_x[idx_quad_4]
-                tmp_y[idx_quad_4] = tmp_y[idx_quad_4]
-            
-            distances.append((tmp_x, tmp_y))
-        
-    # Coordinates center
-    lat_center = (np.max(lat) + np.min(lat)) / 2.
-    lon_center = (np.max(lon) + np.min(lon)) / 2.
+    # Initialize map
+    map_osm = folium.Map()
+    folium.TileLayer('openstreetmap').add_to(map_osm)
+    folium.TileLayer('stamenterrain').add_to(map_osm)
     
-    # Depending on the library used for plotting
-    if MAPPING_LIBRARY == "mplleaflet":
-        # Creating figure
-        fig, ax = plt.subplots()
+    # See what's in the list
+    for icoords_array, coords_array in enumerate(coords_array_list):
         
-        # Plot trace
-        ax.plot(lon, lat, 'k', linewidth = 4)
-        if coords_array2 is not None:
-            ax.plot(lon2, lat2, 'r', linewidth = 4)
+        # Unpacking coordinates
+        lat = coords_array[:,0]
+        lon = coords_array[:,1]
+        if coords_array2_list is not None:
+            coords_array2 = coords_array2_list[icoords_array]
+        else:
+            coords_array2 = None
+            
+        # The center of this track
+        center_lat.append((np.max(lat) + np.min(lat)) / 2)
+        center_lon.append((np.max(lon) + np.min(lon)) / 2)
         
-        # Plot data
-        if onmapdata is not None:
+        # Prepare extra data to be plotted along the trace
+        if tangentdata is not None:
+            # Unpacking tangentdata
+            data = tangentdata['data']
+            sides = tangentdata['sides']
+            palette = tangentdata['palette']
+            # Determine the perpendicular axis for each pair of consecutive points
+            dtrace_lon = np.diff(lon)
+            dtrace_lat = np.diff(lat)
+            m = dtrace_lat/dtrace_lon
+            deg = np.arctan2(dtrace_lat, dtrace_lon) / (2*np.pi) * 360
+            m[np.where(m == 0)] = 0.0000001
+            m_p = -1/m
+            quad = FindQuadrant(deg+90)
+            
+            # For each data vectors (columns of data)
+            distances = list()
+            M = np.size(data, axis = 1)
             for col in range(M):
-                tmp_lon = lon[1:] + distances[col][0]
-                tmp_lat = lat[1:] + distances[col][1]
-                tmp_poly_lon = np.hstack((lon[1:], np.flipud(tmp_lon)))
-                tmp_poly_lat = np.hstack((lat[1:], np.flipud(tmp_lat)))
-                tmp_poly = np.vstack((tmp_poly_lon,tmp_poly_lat)).T
-                ax.add_patch(patches.Polygon(tmp_poly, hatch="o", facecolor=palette[col], alpha = 1.0))
-            
-        # Plot on OSM
-        mplleaflet.show(fig = ax.figure, path=HTML_FILENAME)
-        
-    elif MAPPING_LIBRARY == "folium":
-        # Initialize map
-        map_osm = folium.Map(location=[lat_center, lon_center], zoom_start=13)#, tiles='Stamen Terrain')
+                tmp_x = data[1:,col] / np.sqrt(1+m_p**2)
+                tmp_y = tmp_x * m_p
+                tmp_side = sides[col]
+                
+                idx_quad_1 = np.where(quad == 1)
+                idx_quad_2 = np.where(quad == 2)
+                idx_quad_3 = np.where(quad == 3)
+                idx_quad_4 = np.where(quad == 4)
+                
+                if tmp_side == 0:
+                    tmp_x[idx_quad_1] = tmp_x[idx_quad_1]
+                    tmp_y[idx_quad_1] = tmp_y[idx_quad_1]
+                    tmp_x[idx_quad_2] = tmp_x[idx_quad_2]
+                    tmp_y[idx_quad_2] = tmp_y[idx_quad_2]
+                    tmp_x[idx_quad_3] = -tmp_x[idx_quad_3]
+                    tmp_y[idx_quad_3] = -tmp_y[idx_quad_3]
+                    tmp_x[idx_quad_4] = -tmp_x[idx_quad_4]
+                    tmp_y[idx_quad_4] = -tmp_y[idx_quad_4]
+                else:
+                    tmp_x[idx_quad_1] = -tmp_x[idx_quad_1]
+                    tmp_y[idx_quad_1] = -tmp_y[idx_quad_1]
+                    tmp_x[idx_quad_2] = -tmp_x[idx_quad_2]
+                    tmp_y[idx_quad_2] = -tmp_y[idx_quad_2]
+                    tmp_x[idx_quad_3] = tmp_x[idx_quad_3]
+                    tmp_y[idx_quad_3] = tmp_y[idx_quad_3]
+                    tmp_x[idx_quad_4] = tmp_x[idx_quad_4]
+                    tmp_y[idx_quad_4] = tmp_y[idx_quad_4]
+                
+                distances.append((tmp_x, tmp_y))
         
         # Balloon plots (made with Vincent)
-        if balloondata is not None:
+        if balloondata_list is not None:
+            balloondata = balloondata_list[icoords_array]
             index = np.ndarray.tolist(balloondata['distance'])
-            
+                
             # Altitude, also used to plot the highest elevation marker
             if balloondata['elevation'] is not None:
                 plot_h = {'index': index}
@@ -882,17 +910,9 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
                 #    popup=folium.Popup(max_width = 1000).add_child(
                 #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
                 #).add_to(map_osm)
-        
-        # Plot start/finish markers
-        map_osm.add_child(folium.Marker([lat[0], lon[0]],
-                                        popup = "Start",
-                                        icon=folium.Icon(color='green', icon='circle-arrow-up')))
-        map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
-                                        popup = "Finish",
-                                        icon=folium.Icon(color='red', icon='circle-arrow-down')))
-        
-        # Plot data
-        if onmapdata is not None:
+            
+        # Extra data along the tracks
+        if tangentdata is not None:
             fig, ax = plt.subplots()
             # Method 1: Create patches the mplleaflet way, one for every data we want to plot
             for col in range(M):
@@ -931,112 +951,101 @@ def PlotOnMap(coords_array, coords_array2, onmapdata, balloondata, rdp_reduction
             #    fill_color='red',
             #    fill_opacity=0.5,
             #    popup='Tokyo, Japan').add_to(map_osm)
-
-        # Plot trace
+    
+        # Plot tracks
         if rdp_reduction:
-            if onmapdata is not None:
-                print "\nWARNING: RDP reduction activated with onmapdata, trace/polygons misallignments are possible"
+            if tangentdata is not None:
+                print "\nWARNING: RDP reduction activated with tangentdata, trace/polygons misallignments are possible"
             coords_array = rdp(coords_array, RDP_EPSILON)
-            
-        map_osm.add_child(folium.PolyLine(coords_array, color='#000000', weight = 4, opacity=1))
+        # Plot first the 2nd trace, if available, so it stays on the background
         if coords_array2 is not None:
-            map_osm.add_child(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1))
+            map_osm.add_child(folium.PolyLine(coords_array2, color='#444444', weight = 4, opacity=1.0))
+        map_osm.add_child(folium.PolyLine(coords_array, color=coords_palette[icoords_array], weight = 4, opacity=1.0))
         
-        # Create and save map
-        map_osm.save(HTML_FILENAME, close_file=False)
-        if platform.system() == "Darwin":
-            # On MAC
-            cwd = os.getcwd()
-            webbrowser.open("file://" + cwd + "/" + HTML_FILENAME)
-        elif platform.system() == 'Windows':
-            # On Windows
-            webbrowser.open(HTML_FILENAME, new=2)
+        # Plot start/finish markers
+        map_osm.add_child(folium.Marker([lat[0], lon[0]],
+                                        popup = "Start",
+                                        icon=folium.Icon(color='green', icon='circle-arrow-up')))
+        map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
+                                        popup = "Finish",
+                                        icon=folium.Icon(color='red', icon='circle-arrow-down')))
+
+    # Center map
+    map_osm.location = [np.mean(np.asarray(center_lat)), np.mean(np.asarray(center_lon))]
+    map_osm.zoom_start = 12
+            
+    # Create and save map
+    folium.LayerControl().add_to(map_osm)
+    map_osm.save(HTML_FILENAME, close_file=False)
+    if platform.system() == "Darwin":
+        # On MAC
+        cwd = os.getcwd()
+        webbrowser.open("file://" + cwd + "/" + HTML_FILENAME)
+    elif platform.system() == 'Windows':
+        # On Windows
+        webbrowser.open(HTML_FILENAME, new=2)
         
     return
 
 
-#==============================================================================
-# Main function
-#==============================================================================
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
-    
-    print("############################ GPX VIEWER ############################\n")
-    
-    # Arguments
-    track_nr = 0
-    segment_nr = 0
-    # FILENAME = "tracks/2017-03-25 0908__20170325_0908 MTB ad Epen, Limburg.gpx"
-    FILENAME = "tracks/rinjani.gpx"
-    
-    if len(sys.argv) >= 2:
-        if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
-            FILENAME = sys.argv[1]
-            if len(sys.argv) == 4:
-                track_nr = int(sys.argv[2])
-                segment_nr = int(sys.argv[3])
-    else:
-        print "No GPX file provided, the default file will be loaded."
-    
-    # Loading .gpx file
-    print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
-    gpx, longest_traseg, Ntracks, Nsegments, infos = LoadGPX(FILENAME)
-    print infos
-    gpx, coords, infos = ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation=False)
-    print infos
-    
-    #==============================================================================
-    # Homemade processing
-    #==============================================================================
-    if False:
-        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE=False)
-        h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
-        
-        fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
-        ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
-        
-        data = np.ones((len(lat_cleaned),2))
-        data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
-        data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-        onmapdata = {'data': data,
-                     'sides': (0, 1),
-                     'palette': ('blue','red')}
-        balloondata = {'distance': s_cleaned,
-                       'elevation': h_filtered,
-                       'speed': speed_h}
-        PlotOnMap(np.vstack((lat_cleaned, lon_cleaned)).T, None, onmapdata=onmapdata, balloondata=balloondata, rdp_reduction=False)
-    
-    #==============================================================================
-    # Kalman processing
-    #==============================================================================
-    if True:
-        coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
-                                                                                 method=0, 
-                                                                                 use_acceleration=False,
-                                                                                 extra_smooth=False,
-                                                                                 debug_plot=False)
-        print infos
-        
-        new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means)        
-        print infos
-        
-        # Plot original/corrected altitude profile
-        fig_alt, ax_alt = plt.subplots()
-        ax_alt = PlotElevation(ax_alt, measurements, state_means)
-        
-        # Plot corrected speed
-        fig_speed, ax_speed = plt.subplots()
-        ax_speed = PlotSpeed(ax_speed, new_gpx.tracks[0].segments[0])
-        
-        # Plot
-        balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
-                       'elevation': np.asarray(new_coords['ele']),
-                       'speed': None}
-        PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
-                  np.vstack((coords['lat'], coords['lon'])).T,
-                  onmapdata=None, balloondata=balloondata, rdp_reduction=False)
+"""
+FUNZIONE PER SCARICARE E PLOTTARE IL PROFILO DEL TERRENO DI UNA DETERMINATA AREA
+PER ORA INUTILIZZATA
 
+Documentation
+http://vterrain.org/Elevation/global.html
 
-if __name__ == "__main__":
-    main()
+Pacchetti per scaricare i dati:
+
+https://pypi.python.org/pypi/elevation
+http://elevation.bopen.eu/en/stable/
+
+https://pypi.python.org/pypi/py-altimetry/0.3.1
+https://algorithmia.com/algorithms/Gaploid/Elevation
+http://stackoverflow.com/questions/11504444/raster-how-to-get-elevation-at-lat-long-using-python
+http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation-difference-between-two-points
+"""
+def CreateElevationMap():
+    gpx = gpxpy.gpx.GPX()
+    gpx.tracks.append(gpxpy.gpx.GPXTrack())
+    gpx.tracks[0].segments.append(gpxpy.gpx.GPXTrackSegment())
+    LAT_MIN = 45.0
+    LAT_MAX = 46.0
+    LON_MIN = 5.0
+    LON_MAX = 6.0
+    STEP = 0.
+    lat = list()
+    lon = list()
+    for ilat in range(LAT_MIN, LAT_MAX, STEP):
+        for ilon in range(LON_MIN, LON_MAX, STEP):
+            gpx.tracks[0].segments[0].points.append(gpxpy.gpx.GPXTrackPoint(latitude=ilat,
+                                                                            longitude=ilon,
+                                                                            elevation=None,
+                                                                            speed=None,
+                                                                            time=None))
+            lat.append(ilat)
+            lon.append(ilon)
+    elevation_data = srtm.get_data()
+    elevation_data.add_elevations(gpx, smooth=True)
+    ele = [p.elevation for p in gpx.tracks[0].segments[0].points]
+    
+    # Converting to np arrays
+    lat = np.asarray(lat)
+    lon = np.asarray(lon)
+    ele = np.asarray(ele)
+    
+    # Plot
+    fig, ax = plt.subplots(111)
+    return
+    
+    
+            
+"""
+Homemade processing
+if False:
+    lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE=False)
+    h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
+    
+    fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
+    ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
+"""
