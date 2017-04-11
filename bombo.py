@@ -609,7 +609,7 @@ def LoadGPX(filename):
     id_longest_track = 0
     id_longest_segment = 0
     length_longest_segment = 0
-    infos = "GPX file structure:\n"
+    infos = ""
     for itra, track in enumerate(gpx.tracks):
         infos = infos + "Track {}\n".format(itra)
         # Check if this is the track with more segments
@@ -665,7 +665,7 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
-    infos = infos + "\nSTATS BASED ON THE GPX FILE\n"
+    infos = infos + "STATS BASED ON THE GPX FILE\n"
     infos = infos + GiveStats(segment)
     
     # https://github.com/tkrajina/srtm.py
@@ -761,7 +761,9 @@ def FindQuadrant(deg):
     return n
 
 def GeneratePalette(N=5):
-    HSV_tuples = [(x*1.0/N, 0.5, 1.0) for x in xrange(N)]
+    SATURATION = 1.0
+    VALUE = 1.0
+    HSV_tuples = [(x*1.0/N, SATURATION, VALUE) for x in xrange(N)]
     hex_out = []
     for rgb in HSV_tuples:
         rgb = map(lambda x: int(x*255),colorsys.hsv_to_rgb(*rgb))
