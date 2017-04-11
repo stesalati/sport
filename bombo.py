@@ -987,69 +987,12 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
         
     return
 
-
-#==============================================================================
-# Main function
-#==============================================================================
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+"""
+Homemade processing
+if False:
+    lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE=False)
+    h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
     
-    print("############################ GPX VIEWER ############################\n")
-    
-    # Arguments
-    track_nr = 0
-    segment_nr = 0
-    # FILENAME = "tracks/2017-03-25 0908__20170325_0908 MTB ad Epen, Limburg.gpx"
-    FILENAME = "tracks/rinjani.gpx"
-    
-    if len(sys.argv) >= 2:
-        if (sys.argv[1].endswith('.gpx') | sys.argv[1].endswith('.GPX')):
-            FILENAME = sys.argv[1]
-            if len(sys.argv) == 4:
-                track_nr = int(sys.argv[2])
-                segment_nr = int(sys.argv[3])
-    else:
-        print "No GPX file provided, the default file will be loaded."
-    
-    # Loading .gpx file
-    print "Loading {} >>> track {} >>> segment {}". format(FILENAME, track_nr, segment_nr)
-    gpx, longest_traseg, Ntracks, Nsegments, infos = LoadGPX(FILENAME)
-    print infos
-    gpx, coords, infos = ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation=False)
-    print infos
-    
-    #==============================================================================
-    # Homemade processing
-    #==============================================================================
-    if False:
-        lat_cleaned, lon_cleaned, h_cleaned, t_cleaned, s_cleaned, ds_cleaned, speed_h, speed_v, gradient = RemoveOutliers(coords, VERBOSE=False)
-        h_filtered, dh_filtered, speed_v_filtered, gradient_filtered = FilterElevation(np.diff(t_cleaned), h_cleaned, ds_cleaned, 7)
-        
-        fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
-        ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
-    
-    #==============================================================================
-    # Kalman processing
-    #==============================================================================
-    if True:
-        coords, measurements, state_means, state_vars, infos = ApplyKalmanFilter(coords, gpx,
-                                                                                 method=0, 
-                                                                                 use_acceleration=False,
-                                                                                 extra_smooth=False,
-                                                                                 debug_plot=False)
-        print infos
-        
-        new_coords, new_gpx, infos = SaveDataToCoordsAndGPX(coords, state_means)        
-        print infos
-        
-        # Plot original/corrected altitude profile
-        fig_alt, ax_alt = plt.subplots()
-        ax_alt = PlotElevation(ax_alt, measurements, state_means)
-        
-        # Plot corrected speed
-        fig_speed, ax_speed = plt.subplots()
-        ax_speed = PlotSpeed(ax_speed, new_gpx.tracks[0].segments[0])
-
-if __name__ == "__main__":
-    main()
+    fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
+    ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
+"""
