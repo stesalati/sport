@@ -270,9 +270,12 @@ class MainWindow(QMainWindow):
     
     def selectFileToOpen(self):
         
-        def getPreProcessingChoice(self):
+        def getPreProcessingChoice(self, filename, filestructure):
             items = ("Choose the longest", "Merge all")
-            item, okPressed = QInputDialog.getItem(self, "The file selected contains more than one track/segment","What to do:", items, 0, False)
+            item, okPressed = QInputDialog.getItem(self,
+                                                   "Multiple tracks/segments",
+                                                   "File '" + filename + "' contains more than one track/segment\n\n" + infos + "\nWhat to do?",
+                                                   items, 0, False)
             if okPressed and item:
                 return items.index(item)
             else:
@@ -293,22 +296,28 @@ class MainWindow(QMainWindow):
             old_directory = "tracks"
         
         # Open the dialog box
-        fullfilename = QFileDialog.getOpenFileName(self,
-                                                   'Open .gpx',
-                                                   "tracks",
-                                                   "GPX files (*.gpx)")
-        if fullfilename[0]:
-            directory, filename = os.path.split(str(fullfilename[0]))
+        fullfilename_list = QFileDialog.getOpenFileNames(self,
+                                                         'Open .gpx',
+                                                         "tracks",
+                                                         "GPX files (*.gpx)")
+        
+        # Process every selected file
+        for i, fullfilename in enumerate(fullfilename_list[0]):
+            # Process filename
+            directory, filename = os.path.split(str(fullfilename))
             filename, fileextension = os.path.splitext(filename)
-            # Save the new directory in the application settings
-            self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory[0])))
+            
+            # Save the new directory in the application settings (it only
+            # needs to be done once)
+            if i == 0:
+                self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
             
             # Open file and inspect what's inside
-            gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename[0])
+            gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename)
             
             # If there's more than one track or segment, ask how to proceed
             if (Ntracks > 1) or (Nsegments > 1):
-                preprocessingchoice = getPreProcessingChoice(self)
+                preprocessingchoice = getPreProcessingChoice(self, filename, infos)
                 if preprocessingchoice == 0:
                     preprocessedgpx = bombo.SelectOneTrackAndSegmentFromGPX(gpxraw, longest_traseg[0], longest_traseg[1])
                     listname = filename + " (longest)"
