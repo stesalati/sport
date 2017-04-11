@@ -770,7 +770,7 @@ def GeneratePalette(N=5):
         hex_out.append("#" + "".join(map(lambda x: chr(x).encode('hex'),rgb)))
     return hex_out
 
-def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, balloondata, rdp_reduction):
+def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata, balloondata_list, rdp_reduction):
     """
     Documentation
     https://www.youtube.com/watch?v=BwqBNpzQwJg
@@ -780,6 +780,11 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
     http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/MarkerCluster.ipynb
     http://nbviewer.jupyter.org/github/python-visualization/folium/blob/master/examples/Quickstart.ipynb
     Icons: 'ok-sign', 'cloud', 'info-sign', 'remove-sign', http://getbootstrap.com/components/
+    
+    http://www.digital-geography.com/tag/leaflet/#.WOyjfFWGOUk
+    
+    3D
+    http://nbviewer.jupyter.org/github/ocefpaf/folium_notebooks/blob/a68a89ae28587e6a9fbb21e7a1bd6042183a11bf/test_3D.ipynb
     """
     
     # Mapping parameters
@@ -793,7 +798,9 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
     center_lon = list()
     
     # Initialize map
-    map_osm = folium.Map()#, tiles='Stamen Terrain')
+    map_osm = folium.Map()
+    folium.TileLayer('openstreetmap').add_to(map_osm)
+    folium.TileLayer('stamenterrain').add_to(map_osm)
     
     # See what's in the list
     for icoords_array, coords_array in enumerate(coords_array_list):
@@ -810,12 +817,12 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
         center_lat.append((np.max(lat) + np.min(lat)) / 2)
         center_lon.append((np.max(lon) + np.min(lon)) / 2)
         
-        # Prepare data to be plotted along the trace
-        if onmapdata is not None:
-            # Unpacking onmapdata
-            data = onmapdata['data']
-            sides = onmapdata['sides']
-            palette = onmapdata['palette']
+        # Prepare extra data to be plotted along the trace
+        if tangentdata is not None:
+            # Unpacking tangentdata
+            data = tangentdata['data']
+            sides = tangentdata['sides']
+            palette = tangentdata['palette']
             # Determine the perpendicular axis for each pair of consecutive points
             dtrace_lon = np.diff(lon)
             dtrace_lat = np.diff(lat)
@@ -859,8 +866,9 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
                 
                 distances.append((tmp_x, tmp_y))
         
-        # Prepare balloon plots (made with Vincent)
-        if balloondata is not None:
+        # Balloon plots (made with Vincent)
+        if balloondata_list is not None:
+            balloondata = balloondata_list[icoords_array]
             index = np.ndarray.tolist(balloondata['distance'])
                 
             # Altitude, also used to plot the highest elevation marker
@@ -902,17 +910,9 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
                 #    popup=folium.Popup(max_width = 1000).add_child(
                 #        folium.Vega(json.load(open('plot_speed_h.json')), width = 1000, height = 250))
                 #).add_to(map_osm)
-                
-                # Plot start/finish markers
-                map_osm.add_child(folium.Marker([lat[0], lon[0]],
-                                                popup = "Start",
-                                                icon=folium.Icon(color='green', icon='circle-arrow-up')))
-                map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
-                                                popup = "Finish",
-                                                icon=folium.Icon(color='red', icon='circle-arrow-down')))
             
-        # Plot data
-        if onmapdata is not None:
+        # Extra data along the tracks
+        if tangentdata is not None:
             fig, ax = plt.subplots()
             # Method 1: Create patches the mplleaflet way, one for every data we want to plot
             for col in range(M):
@@ -952,21 +952,30 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, onmapdata, 
             #    fill_opacity=0.5,
             #    popup='Tokyo, Japan').add_to(map_osm)
     
-        # Plot trace
+        # Plot tracks
         if rdp_reduction:
-            if onmapdata is not None:
-                print "\nWARNING: RDP reduction activated with onmapdata, trace/polygons misallignments are possible"
+            if tangentdata is not None:
+                print "\nWARNING: RDP reduction activated with tangentdata, trace/polygons misallignments are possible"
             coords_array = rdp(coords_array, RDP_EPSILON)
-            
-        map_osm.add_child(folium.PolyLine(coords_array, color=coords_palette[icoords_array], weight = 4, opacity=1.0))
+        # Plot first the 2nd trace, if available, so it stays on the background
         if coords_array2 is not None:
-            map_osm.add_child(folium.PolyLine(coords_array2, color='#FF0000', weight = 4, opacity=1.0))
+            map_osm.add_child(folium.PolyLine(coords_array2, color='#444444', weight = 4, opacity=1.0))
+        map_osm.add_child(folium.PolyLine(coords_array, color=coords_palette[icoords_array], weight = 4, opacity=1.0))
+        
+        # Plot start/finish markers
+        map_osm.add_child(folium.Marker([lat[0], lon[0]],
+                                        popup = "Start",
+                                        icon=folium.Icon(color='green', icon='circle-arrow-up')))
+        map_osm.add_child(folium.Marker([lat[-1], lon[-1]], 
+                                        popup = "Finish",
+                                        icon=folium.Icon(color='red', icon='circle-arrow-down')))
 
     # Center map
     map_osm.location = [np.mean(np.asarray(center_lat)), np.mean(np.asarray(center_lon))]
     map_osm.zoom_start = 12
             
     # Create and save map
+    folium.LayerControl().add_to(map_osm)
     map_osm.save(HTML_FILENAME, close_file=False)
     if platform.system() == "Darwin":
         # On MAC
@@ -1019,17 +1028,6 @@ def main(argv=None):
         
         fig, ax = plt.subplots(4, 1, sharex=True, squeeze=True)
         ax = PlotSummary(ax, s_cleaned, h_filtered, dh_filtered, speed_h, speed_v_filtered, gradient_filtered)
-        
-        data = np.ones((len(lat_cleaned),2))
-        data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
-        data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
-        onmapdata = {'data': data,
-                     'sides': (0, 1),
-                     'palette': ('blue','red')}
-        balloondata = {'distance': s_cleaned,
-                       'elevation': h_filtered,
-                       'speed': speed_h}
-        PlotOnMap(np.vstack((lat_cleaned, lon_cleaned)).T, None, onmapdata=onmapdata, balloondata=balloondata, rdp_reduction=False)
     
     #==============================================================================
     # Kalman processing
@@ -1052,15 +1050,6 @@ def main(argv=None):
         # Plot corrected speed
         fig_speed, ax_speed = plt.subplots()
         ax_speed = PlotSpeed(ax_speed, new_gpx.tracks[0].segments[0])
-        
-        # Plot
-        balloondata = {'distance': np.cumsum(HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
-                       'elevation': np.asarray(new_coords['ele']),
-                       'speed': None}
-        PlotOnMap(np.vstack((new_coords['lat'], new_coords['lon'])).T,
-                  np.vstack((coords['lat'], coords['lon'])).T,
-                  onmapdata=None, balloondata=balloondata, rdp_reduction=False)
-
 
 if __name__ == "__main__":
     main()
