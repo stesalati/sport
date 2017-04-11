@@ -29,8 +29,7 @@ import bombo as bombo
 """
 TODO
 
-- Consentire di aprire più file nel programma e poi decidere quali processare selezionandoli dalla lista
-- Scegliere di saltare il filtro di Kalman e semplicemente plottare le tracce
+
 """
 
 
@@ -395,7 +394,17 @@ class MainWindow(QMainWindow):
                                'elevation': np.asarray(new_coords['ele']),
                                'speed': None}
                 
-                # Save in global variables
+                # Create extra data for the html plot (fully implemented in bombo, not here)
+                """
+                data = np.ones((len(lat_cleaned),2))
+                data[:,0] = h_filtered / np.max(h_filtered) * 0.0004
+                data[:,1] = np.hstack((np.asarray([0]), speed_h)) / np.max(np.hstack((np.asarray([0]), speed_h))) * 0.0004
+                tangentdata = {'data': data,
+                               'sides': (0, 1),
+                               'palette': ('blue','red')}
+                """
+                
+                # Saverelevant output in global variables
                 self.proc_coords.append(coords)
                 self.proc_measurements.append(measurements)
                 self.proc_state_means.append(state_means)
@@ -412,20 +421,20 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
             
             # Generate html plot
-            # If only one tarce was selected, proceed with the complete output, otherwise just plot the traces
+            # If only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
                 bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
-                                coords_array2_list=None,#self.proc_coords_to_plot2,
+                                coords_array2_list=self.proc_coords_to_plot2,
                                 coords_palette = self.selectedpalette,
-                                onmapdata=None,
-                                balloondata=balloondata,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
                                 rdp_reduction=self.checkUseRDP.isChecked())
             else:
                 bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
                                 coords_array2_list=None,
                                 coords_palette = self.selectedpalette,
-                                onmapdata=None,
-                                balloondata=None,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
                                 rdp_reduction=self.checkUseRDP.isChecked())
         else:
             self.textOutput.setText("You need to open a .gpx file before!")
