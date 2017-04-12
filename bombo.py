@@ -27,6 +27,7 @@ import platform
 from rdp import rdp
 import scipy.io as sio
 import colorsys
+from osgeo import gdal, osr
 
 """
 DOCUMENTATION
@@ -989,56 +990,27 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
 
 
 """
-FUNZIONE PER SCARICARE E PLOTTARE IL PROFILO DEL TERRENO DI UNA DETERMINATA AREA
-PER ORA INUTILIZZATA
+DOCUMENTATION
 
-Documentation
+# Example
+http://www.pyvotons.org/?page_id=183
+
+# Tile download
+http://dwtkns.com/srtm/
+http://www.pyvotons.org/?page_id=178
+http://srtm.csi.cgiar.org/SELECTION/inputCoord.asp
+
+# Altri metodi per scaricare l'altitudine (scartati per vari motivi)
 http://vterrain.org/Elevation/global.html
-
-Pacchetti per scaricare i dati:
-
 https://pypi.python.org/pypi/elevation
 http://elevation.bopen.eu/en/stable/
-
 https://pypi.python.org/pypi/py-altimetry/0.3.1
-https://algorithmia.com/algorithms/Gaploid/Elevation
+https://algorithmia.com/algorithms/Gaploid/Elevation -> a pagamento
 http://stackoverflow.com/questions/11504444/raster-how-to-get-elevation-at-lat-long-using-python
 http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation-difference-between-two-points
 """
-def CreateElevationMap():
-    gpx = gpxpy.gpx.GPX()
-    gpx.tracks.append(gpxpy.gpx.GPXTrack())
-    gpx.tracks[0].segments.append(gpxpy.gpx.GPXTrackSegment())
-    LAT_MIN = 45.0
-    LAT_MAX = 46.0
-    LON_MIN = 5.0
-    LON_MAX = 6.0
-    STEP = 0.
-    lat = list()
-    lon = list()
-    for ilat in range(LAT_MIN, LAT_MAX, STEP):
-        for ilon in range(LON_MIN, LON_MAX, STEP):
-            gpx.tracks[0].segments[0].points.append(gpxpy.gpx.GPXTrackPoint(latitude=ilat,
-                                                                            longitude=ilon,
-                                                                            elevation=None,
-                                                                            speed=None,
-                                                                            time=None))
-            lat.append(ilat)
-            lon.append(ilon)
-    elevation_data = srtm.get_data()
-    elevation_data.add_elevations(gpx, smooth=True)
-    ele = [p.elevation for p in gpx.tracks[0].segments[0].points]
-    
-    # Converting to np arrays
-    lat = np.asarray(lat)
-    lon = np.asarray(lon)
-    ele = np.asarray(ele)
-    
-    # Plot
-    fig, ax = plt.subplots(111)
-    return
-    
-    
+
+
             
 """
 Homemade processing
