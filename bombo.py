@@ -1000,6 +1000,13 @@ http://dwtkns.com/srtm/
 http://www.pyvotons.org/?page_id=178
 http://srtm.csi.cgiar.org/SELECTION/inputCoord.asp
 
+# Iceland
+http://www.eea.europa.eu/data-and-maps/data/eu-dem
+https://www.planetside.co.uk/forums/index.php?topic=19089.0
+http://wiki.openstreetmap.org/wiki/Contours_for_Iceland
+http://viewfinderpanoramas.org/dem3.html
+https://gdex.cr.usgs.gov/gdex/
+
 # Altri metodi per scaricare l'altitudine (scartati per vari motivi)
 http://vterrain.org/Elevation/global.html
 https://pypi.python.org/pypi/elevation
