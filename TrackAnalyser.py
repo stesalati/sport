@@ -450,6 +450,10 @@ class MainWindow(QMainWindow):
                                 tangentdata=None,
                                 balloondata_list=self.proc_balloondata,
                                 rdp_reduction=self.checkUseRDP.isChecked())
+                
+            # Generate 3D plot
+            bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], 400)
+                
         else:
             self.textOutput.setText("You need to open a .gpx file before!")
         return

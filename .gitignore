@@ -9,3 +9,6 @@
 
 # Pyc
 *.pyc
+
+# Elevation data folder
+elevationdata/*.*
