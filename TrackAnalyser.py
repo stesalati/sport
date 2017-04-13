@@ -5,32 +5,33 @@
 @mail: stef.salati@gmail.com
 """
 
-import sys
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
+
+import os
+os.environ['QT_API'] = 'pyqt'
+from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
                              QCheckBox, QComboBox, QSizePolicy, QTabWidget,
                              QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
-                             # QToolTip, QLineEdit, QPushButton
-from PyQt5 import QtGui, QtCore
-# from PyQt5.QtCore import QSettings
-import os
+from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import (
-    FigureCanvasQTAgg as FigureCanvas,
-    NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.widgets import MultiCursor#, Cursor
+if os.environ['QT_API'] == 'pyqt':
+    # To be used qith PyQt4
+    from matplotlib.backends.backend_qt4agg import (
+            FigureCanvasQTAgg as FigureCanvas,
+            NavigationToolbar2QT as NavigationToolbar)
+else:
+    # To be used qith PyQt5
+    from matplotlib.backends.backend_qt5agg import (
+        FigureCanvasQTAgg as FigureCanvas,
+        NavigationToolbar2QT as NavigationToolbar)
+from matplotlib.widgets import MultiCursor
 import platform
 import ctypes
+import sys
 
 import bombo as bombo
-
-"""
-TODO
-
-
-"""
 
 
 """
@@ -46,6 +47,10 @@ http://zetcode.com/gui/pyqt5/layout/
 http://zetcode.com/gui/pyqt5/dialogs/
 https://pythonspot.com/en/pyqt5-matplotlib/
 https://pythonspot.com/en/pyqt5/
+
+QtPy
+I need to use this cos I've already upgraded my code from 4 to 5 and now I see I need to use 4 as mayavi only works with 4.
+https://pypi.python.org/pypi/QtPy
 
 Plots
 http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
@@ -293,7 +298,7 @@ class MainWindow(QMainWindow):
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
-        # print "Last used directory: {}".format(old_directory)
+        # print "Last used directory: {}\n".format(old_directory)
         
         # Check if the setting exists
         if old_directory is not None:
@@ -310,9 +315,13 @@ class MainWindow(QMainWindow):
                                                          'Open .gpx',
                                                          "tracks",
                                                          "GPX files (*.gpx)")
+        if os.environ['QT_API'] == 'pyqt':
+            pass
+        elif os.environ['QT_API'] == 'pyqt5':
+            fullfilename_list = fullfilename_list[0]
         
         # Process every selected file
-        for i, fullfilename in enumerate(fullfilename_list[0]):
+        for i, fullfilename in enumerate(fullfilename_list):
             # Process filename
             directory, filename = os.path.split(str(fullfilename))
             filename, fileextension = os.path.splitext(filename)
@@ -320,8 +329,12 @@ class MainWindow(QMainWindow):
             # Save the new directory in the application settings (it only
             # needs to be done once)
             if i == 0:
-                self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
-            
+                # print "New directory to be saved: {}\n".format(directory)
+                if os.environ['QT_API'] == 'pyqt':
+                    self.settings.setValue("lastdirectory", str(directory))
+                elif os.environ['QT_API'] == 'pyqt5':
+                    self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
+                
             # Open file and inspect what's inside
             gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename)
             
@@ -452,7 +465,7 @@ class MainWindow(QMainWindow):
                                 rdp_reduction=self.checkUseRDP.isChecked())
                 
             # Generate 3D plot
-            bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], 400)
+            # bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], 400)
                 
         else:
             self.textOutput.setText("You need to open a .gpx file before!")
@@ -500,9 +513,9 @@ class MainWindow(QMainWindow):
                 self.selectedpalette.append(self.palette[i.row()])
 
         # Application Settings
-        QtCore.QCoreApplication.setOrganizationName("Steba")
+        QtCore.QCoreApplication.setOrganizationName("Ste")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
-        QtCore.QCoreApplication.setApplicationName("Steba")
+        QtCore.QCoreApplication.setApplicationName("TrackAnalyser")
         self.settings = QtCore.QSettings(self)
         
         # Actions
@@ -693,7 +706,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.scatola)
         
         # Application settings
-        self.setWindowTitle('STEBA GUI')
+        self.setWindowTitle('TrackAnalyser')
         self.setWindowIcon((QtGui.QIcon('icons/app.png')))
         self.setGeometry(100, 100, 1200, 700)
         self.show()
@@ -709,7 +722,7 @@ if platform.system() == "Darwin":
     pass
 elif platform.system() == 'Windows':
     # On Windows
-    myappid = 'Steba.Steba.Steba.v0.1' # arbitrary string
+    myappid = 'Ste.Sport.TrackAnalyser.v0.1' # arbitrary string
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
 main.show()
