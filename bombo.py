@@ -1123,7 +1123,7 @@ def PlotOnMap3D(track_lat, track_lon, margin):
     
     return
 
-            
+
 """
 Homemade processing
 if False:
