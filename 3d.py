@@ -10,19 +10,23 @@ from osgeo import gdal, osr
 import math
 import os
 import sys
+#from PyAstronomy import pyasl
+
+
+#sys.path.append('C:/Users/salatis/AppData/Local/Continuum/Anaconda2/Scripts')
+#sys.path.append('~/anaconda/bin/')
+
+
 import gdal_merge as gm
 
-sys.path.append('C:/Users/salatis/AppData/Local/Continuum/Anaconda2/Scripts')
+startingpoint = (44.1938472, 10.7012833)    # Cimone
 
+startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
 
-
-
-
-startingpoint = (44.6478300, 10.9253900)
-track_lat = np.arange(startingpoint[0], startingpoint[0]+0.01, 0.00001).transpose()
+track_lat = np.arange(startingpoint[0], startingpoint[0]+0.05, 0.00001).transpose()
 track_lon = np.tile(startingpoint[1], (len(track_lat)))
-margin = 400
-
+margin = 500
+zscale = 1
 
 
 
@@ -34,6 +38,7 @@ margin = 400
 """
 ACTUAL FUNCTION UNDER TEST
 """
+
 
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
@@ -70,7 +75,7 @@ tiles_lon = range(tile_corner_min[1], tile_corner_max[1]+1)
 
 # For debug
 #tiles_lat = range(38, 39+1)
-#tiles_lon = range(3, 3+1)
+#tiles_lon = range(4, 4+1)
 
 print "\nHorizontal tiles: {}".format(tiles_lat)
 print "Vertical tiles: {}\n".format(tiles_lon)
@@ -89,7 +94,7 @@ if len(tiles_lat) > 1 or len(tiles_lon) > 1:
     # Merge
     print gdal_merge_command_list
     gm.main(gdal_merge_command_list)
-    filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
+    filename = "elevationdata/tmp.tif".format(tilename, tilename)
 else:
     tilename = "srtm_{:02d}_{:02d}".format(tiles_lat[0], tiles_lon[0])
     filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
@@ -114,7 +119,9 @@ print "Longitude: {} <-- {} -- {} --> {}\n".format(tile_lon_min, lon_min, lon_ma
 zone_x_min = int((lon_min - tile_lon_min)/gt[1])
 zone_x_size = int((lon_max - lon_min)/gt[1])
 zone_y_min = int((lat_max - tile_lat_max)/gt[5])
-zone_y_size = int((lat_max - lat_min)/gt[1])
+zone_y_size = int((lat_min - lat_max)/gt[5])
+print zone_x_min, zone_x_size
+print zone_y_min, zone_y_size
 
 # Read elevation data
 zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
@@ -130,8 +137,6 @@ array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
 array_x_m = np.empty_like(array_x_deg)
 for x, y in np.ndindex(array_x_deg.shape):
   array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
-
-zscale = 1
 
 # Display 3D surface
 mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * zscale)
