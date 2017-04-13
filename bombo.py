@@ -1023,20 +1023,70 @@ http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation
 def PlotOnMap3D(track_lat, track_lon, margin):
     
     def SRTMTile(lat, lon):
-        xtile = int(np.round((lon - (-180)) / (360/72) + 1))
-        ytile = int(np.round((60 - lat) / (360/72) + 1))
-        name = "srtm_{:02d}_{:02d}".format(xtile, ytile)
-        return name
+        xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
+        ytile = int(np.trunc((60 - lat) / (360/72) + 1))
+        return (xtile, ytile)
     
     earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
     
     # Determine central track coordinates and area width
-    mylocation = ((np.max(track_lat) + np.min(track_lat))/2, (np.max(track_lon) + np.min(track_lon))/2)
+    center = ((np.max(track_lat) + np.min(track_lat))/2, (np.max(track_lon) + np.min(track_lon))/2)
     span_deg = np.max([np.max(track_lat)-np.min(track_lat), np.max(track_lon)-np.min(track_lon)])
     
-    # Choosing the right tile
-    tile = SRTMTile(mylocation[0], mylocation[1])
-    filename = "elevationdata/{}/{}.tif".format(tile, tile)
+    
+    
+    
+    
+    
+    # Determine which tiles are necessary
+    lat_min = np.min(track_lat) - span_deg*0.25
+    lat_max = np.max(track_lat) + span_deg*0.25
+    lon_min = np.min(track_lon) - span_deg*0.25
+    lon_max = np.max(track_lon) + span_deg*0.25
+    
+    tile_corner_min = SRTMTile(lat_min, lon_min)
+    tile_corner_max = SRTMTile(lat_max, lon_max)
+    tiles_lat = range(tile_corner_min[0], tile_corner_max[0]+1)
+    tiles_lon = range(tile_corner_min[1], tile_corner_max[1]+1)
+    
+    print "\nHorizontal tiles: {}".format(tiles_lat)
+    print "Vertical tiles: {}\n".format(tiles_lon)
+    
+    # Load all necessary tiles (in any case, it will be a rectangle)
+    for tile_lat in tiles_lat:
+        for tile_lon in tiles_lon:
+            # Generate tile filename
+            tilename = "srtm_{:02d}_{:02d}".format(tile_lat, tile_lon)
+            print "Working on {}".format(tilename)
+            filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
+            if not os.path.isfile(filename):
+                print "Elevation profile for this location ({}) has not been downloaded.".format(tilename)
+                return
+            
+            # Read SRTM GeoTiff elevation file 
+            ds = gdal.Open(filename)
+            width = ds.RasterXSize
+            height = ds.RasterYSize
+            gt = ds.GetGeoTransform()
+            tile_lon_min = gt[0]
+            tile_lon_max = gt[0] + width*gt[1] + height*gt[2]
+            tile_lat_min = gt[3] + width*gt[4] + height*gt[5] 
+            tile_lat_max = gt[3]
+            tile_ele = ds.GetRasterBand(1)
+            tile_ele_array = tile_ele.ReadAsArray(0, 0, width, height).astype(np.float)
+            
+            print np.size(tile_ele_array, axis=0)
+            print np.size(tile_ele_array, axis=1)
+    
+    
+    
+    
+    
+    # Choosing the right tiles
+    # Central tile
+    tile = SRTMTile(center[0], center[1])
+    tilename = "srtm_{:02d}_{:02d}".format(tile[0], tile[1])
+    filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
     print filename
     
     if not os.path.isfile(filename):
@@ -1055,14 +1105,17 @@ def PlotOnMap3D(track_lat, track_lon, margin):
     tile_ele = ds.GetRasterBand(1)
     span_px = int(np.round(span_deg/gt[1] + margin))
     
-    # Check if the location specified is in this tile
-    if (mylocation[1] < tile_lon_min) or (mylocation[1] > tile_lon_max) or (mylocation[0] < tile_lat_min) or (mylocation[0] > tile_lat_max):
-        print "Error: the selected location is not covered by the current map"
-    mylocation_px = ((mylocation[0]-tile_lat_max)/gt[5], (mylocation[1]-tile_lon_min)/gt[1])
+    print "Latitude:  {} <-- {} --> {}".format(tile_lat_min, center[0], tile_lat_max)
+    print "Longitude: {} <-- {} --> {}\n".format(tile_lon_min, center[1], tile_lon_max)
     
-    zone_x_min_tmp = np.round(mylocation_px[1] - span_px * 0.5)
+    # Check if the location specified is in this tile
+    if (center[1] < tile_lon_min) or (center[1] > tile_lon_max) or (center[0] < tile_lat_min) or (center[0] > tile_lat_max):
+        print "Error: the selected location is not covered by the current map"
+    center_px = ((center[0]-tile_lat_max)/gt[5], (center[1]-tile_lon_min)/gt[1])
+    
+    zone_x_min_tmp = np.round(center_px[1] - span_px * 0.5)
     zone_x_size = span_px
-    zone_y_min_tmp = np.round(mylocation_px[0] - span_px * 0.5)
+    zone_y_min_tmp = np.round(center_px[0] - span_px * 0.5)
     zone_y_size = span_px
     
     # Trim boundaries
@@ -1111,12 +1164,12 @@ def PlotOnMap3D(track_lat, track_lon, margin):
       track_x_m.append(x)
       track_y_m.append(y)
       zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
-      track_z_m.append(zz+30.0) # We display the path 30m over the surface for it to be visible
+      track_z_m.append(zz)
     
     # Display path nodes as spheres
-    mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
-    # Displaying the line does not work as nodes are not listed in the correct order
-    # mlab.plot3d(track_x_m,track_y_m,track_z_m, color=(1,1,0), line_width=15.0) # representation='surface' 'wireframe' 'points'
+    # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
+    # Display path as line
+    mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=50.0)
     
     # Show the 3D map
     mlab.show()
