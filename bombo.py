@@ -1051,7 +1051,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
     px2deg = 0.0008333333333333334
     
     # If track_lat and track_lon are None, run a demo
-    if track_lat == track_lon == None:
+    if len(track_lat) == 0 and len(track_lon) == 0:
         # startingpoint = (44.1938472, 10.7012833)    # Cimone
         startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
         R = 0.01
@@ -1156,6 +1156,9 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
         mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
     
     # Hiking path
+    print np.size(track_lat, axis = 0)
+    print np.size(track_lon, axis = 0)
+    
     track_x_m = list()
     track_y_m = list()
     track_z_m = list()
