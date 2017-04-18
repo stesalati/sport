@@ -14,22 +14,21 @@ import sys
 import gdal_merge as gm
 
 
-startingpoint = (44.1938472, 10.7012833)    # Cimone
-# startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
-track_lat = np.arange(startingpoint[0], startingpoint[0]+1.5, 0.01).transpose()
-track_lon = np.tile(startingpoint[1], (len(track_lat)))
-verbose = True
-
-MARGIN_ON_3DMAP = 500
-ELEVATION_SCALE_ON_3DMAP = 1
 TRACE_SIZE_ON_3DMAP = 200.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 
+track_lat = None
+track_lon = None
+margin=100
+elevation_scale=1
+plot=True
+verbose=False
 
 """
 ACTUAL FUNCTION UNDER TEST
 """
+
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
     ytile = int(np.trunc((60 - lat) / (360/72) + 1))
@@ -49,13 +48,25 @@ def degrees2meters(longitude, latitude):
 earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
 px2deg = 0.0008333333333333334
 
+# If track_lat and track_lon are None, run a demo
+if track_lat == track_lon == None:
+    # startingpoint = (44.1938472, 10.7012833)    # Cimone
+    startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
+    R = 0.01
+    track_lat1 = np.linspace(-R, R, 1000).transpose()
+    track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
+    track_lat2 = np.linspace(R, -R, 1000).transpose()
+    track_lon2 = -np.sqrt(R**2 - track_lat2[0:1000]**2)
+    track_lat = np.hstack((track_lat1[0:-2], track_lat2))
+    track_lon = np.hstack((track_lon1[0:-2], track_lon2))
+    track_lat = track_lat + startingpoint[0]
+    track_lon = track_lon + startingpoint[1]
+
 # Determine the coordinates of the area we are interested in
-center = ((np.max(track_lat) + np.min(track_lat))/2, (np.max(track_lon) + np.min(track_lon))/2)
-span_deg = np.max([np.max(track_lat)-np.min(track_lat), np.max(track_lon)-np.min(track_lon)])
-lat_min = np.min(track_lat) - MARGIN_ON_3DMAP * px2deg
-lat_max = np.max(track_lat) + MARGIN_ON_3DMAP * px2deg
-lon_min = np.min(track_lon) - MARGIN_ON_3DMAP * px2deg
-lon_max = np.max(track_lon) + MARGIN_ON_3DMAP * px2deg
+lat_min = np.min(track_lat) - margin * px2deg
+lat_max = np.max(track_lat) + margin * px2deg
+lon_min = np.min(track_lon) - margin * px2deg
+lon_max = np.max(track_lon) + margin * px2deg
 
 # Determine which tiles are necessary
 tile_corner_min = SRTMTile(lat_min, lon_min)
@@ -83,6 +94,7 @@ if len(tiles_x) > 1 or len(tiles_y) > 1:
                 gdal_merge_command_list.append(filename)
                 if not os.path.isfile(filename):
                     print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+                    #return
         if verbose:
             print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
         gm.main(gdal_merge_command_list)
@@ -93,6 +105,7 @@ else:
     filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
     if not os.path.isfile(filename):
         print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+        #return
 
 # Read SRTM GeoTiff elevation file 
 ds = gdal.Open(filename)
@@ -137,7 +150,8 @@ for x, y in np.ndindex(array_x_deg.shape):
   array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
 
 # Display 3D surface
-mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * ELEVATION_SCALE_ON_3DMAP)
+if plot:
+    mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
 
 # Hiking path
 track_x_m = list()
@@ -150,10 +164,32 @@ for i in range(np.size(track_lat, axis=0)):
   zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
   track_z_m.append(zz)
 
-# Display path nodes as spheres
-# mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
-# Display path as line
-mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+if plot:
+    # Display path nodes as spheres
+    # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
+    # Display path as line
+    mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+    
+if plot:
+    # Set camera position
+    mlab.view(azimuth=-90.0,
+              elevation=60.0,
+              # distance=1.0,
+              distance='auto',
+              # focalpoint=(1000.0, 1000.0, 1000.0),
+              focalpoint='auto',
+              roll=0.0)
+    
+    # Show the 3D map
+    mlab.show()
 
-# Show the 3D map
-mlab.show()
+# Creating the export dictionary
+terrain = {'x': array_x_m, 
+           'y': array_y_m,
+           'z': zone_ele.transpose() * elevation_scale}
+track = {'x': track_x_m,
+         'y': track_y_m,
+         'z': track_z_m,
+         'color': (255.0/255.0, 102.0/255.0, 0),
+         'line_width': 10.0,
+         'tube_radius': TRACE_SIZE_ON_3DMAP}
