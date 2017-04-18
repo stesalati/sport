@@ -5,9 +5,24 @@
 @mail: stef.salati@gmail.com
 """
 
+# COMMENTS ABOUT THE EMBEDDING OF MAYAVI IN PYQT
+# By default, the PySide binding will be used. If you want the PyQt bindings
+# to be used, you need to set the QT_API environment variable to 'pyqt'
+#os.environ['QT_API'] = 'pyqt'
+
+# To be able to use PySide or PyQt4 and not run in conflicts with traits,
+# we need to import QtGui and QtCore from pyface.qt
+#from pyface.qt import QtGui, QtCore
+# Alternatively, you can bypass this line, but you need to make sure that
+# the following lines are executed before the import of PyQT:
+#   import sip
+#   sip.setapi('QString', 2)
 
 import os
 os.environ['QT_API'] = 'pyqt'
+
+os.environ['ETS_TOOLKIT'] = 'qt4'
+
 from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
                              QCheckBox, QComboBox, QSizePolicy, QTabWidget,
@@ -30,6 +45,13 @@ from matplotlib.widgets import MultiCursor
 import platform
 import ctypes
 import sys
+
+
+from traits.api import HasTraits, Instance, on_trait_change
+from traitsui.api import View, Item
+from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+
+
 
 import bombo as bombo
 
@@ -279,6 +301,58 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
+        
+        
+class MayaviQWidget(QWidget):
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+        self.visualization = Visualization()
+
+        # If you want to debug, beware that you need to remove the Qt
+        # input hook.
+        #QtCore.pyqtRemoveInputHook()
+        #import pdb ; pdb.set_trace()
+        #QtCore.pyqtRestoreInputHook()
+
+        # The edit_traits call will generate the widget to embed.
+        self.ui = self.visualization.edit_traits(parent=self, kind='subpanel').control
+        layout.addWidget(self.ui)
+        self.ui.setParent(self)
+    
+    # I created this function to call the visualization.update_plot function, that is part of the Visualization class
+    def update_plot(self, terrain, track):
+        self.visualization.update_plot(terrain, track)
+        
+class Visualization(HasTraits):
+    scene = Instance(MlabSceneModel, ())
+
+    #@on_trait_change('scene.activated')
+    def update_plot(self, terrain, track):
+        # This function is called when the view is opened. We don't
+        # populate the scene when the view is not yet open, as some
+        # VTK features require a GLContext.
+
+        # We can do normal mlab calls on the embedded scene.
+        # self.scene.mlab.test_points3d()
+        
+        # Here's were I embedded my code
+        self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
+        self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
+                               color=track['color'],
+                               line_width=track['line_width'],
+                               tube_radius=track['tube_radius'])
+
+    # the layout of the dialog screated
+    view = View(Item('scene',
+                     editor=SceneEditor(scene_class=MayaviScene),
+                     height=250,
+                     width=300,
+                     show_label=False),
+                resizable=True # We need this to resize with the parent widget
+                )
 
 
 class MainWindow(QMainWindow):
@@ -465,7 +539,9 @@ class MainWindow(QMainWindow):
                                 rdp_reduction=self.checkUseRDP.isChecked())
                 
             # Generate 3D plot
-            # bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], 400)
+            terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], False, False)
+            self.map3d.update_plot(terrain, track)
+            
                 
         else:
             self.textOutput.setText("You need to open a .gpx file before!")
@@ -645,6 +721,18 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab1.setLayout(vBox_right)
         
+        # Tab 5: 3D plot
+        tab5 = QWidget()
+        # The tab layout
+        vBox_right = QVBoxLayout()
+        vBox_right.setSpacing(5)
+        # Area
+        self.map3d = MayaviQWidget()
+        # Add widgets to the layout
+        vBox_right.addWidget(self.map3d)
+        # Associate the layout to the tab
+        tab5.setLayout(vBox_right)
+        
         # Tab 2: Coordinates and variance
         tab2 = QWidget()
         # The tab layout
@@ -695,6 +783,7 @@ class MainWindow(QMainWindow):
         
         # Associate tabs
         tab.addTab(tab1, "Summary")
+        tab.addTab(tab5, "3D")
         tab.addTab(tab2, "Coordinates and variance")
         tab.addTab(tab3, "Elevation and variance")
         tab.addTab(tab4, "Speed and variance")
