@@ -5,32 +5,55 @@
 @mail: stef.salati@gmail.com
 """
 
-import sys
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
+# COMMENTS ABOUT THE EMBEDDING OF MAYAVI IN PYQT
+# By default, the PySide binding will be used. If you want the PyQt bindings
+# to be used, you need to set the QT_API environment variable to 'pyqt'
+#os.environ['QT_API'] = 'pyqt'
+
+# To be able to use PySide or PyQt4 and not run in conflicts with traits,
+# we need to import QtGui and QtCore from pyface.qt
+#from pyface.qt import QtGui, QtCore
+# Alternatively, you can bypass this line, but you need to make sure that
+# the following lines are executed before the import of PyQT:
+#   import sip
+#   sip.setapi('QString', 2)
+
+import os
+os.environ['QT_API'] = 'pyqt'
+
+os.environ['ETS_TOOLKIT'] = 'qt4'
+
+from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
                              QCheckBox, QComboBox, QSizePolicy, QTabWidget,
                              QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
-                             # QToolTip, QLineEdit, QPushButton
-from PyQt5 import QtGui, QtCore
-# from PyQt5.QtCore import QSettings
-import os
+from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import (
-    FigureCanvasQTAgg as FigureCanvas,
-    NavigationToolbar2QT as NavigationToolbar)
-from matplotlib.widgets import MultiCursor#, Cursor
+if os.environ['QT_API'] == 'pyqt':
+    # To be used qith PyQt4
+    from matplotlib.backends.backend_qt4agg import (
+            FigureCanvasQTAgg as FigureCanvas,
+            NavigationToolbar2QT as NavigationToolbar)
+else:
+    # To be used qith PyQt5
+    from matplotlib.backends.backend_qt5agg import (
+        FigureCanvasQTAgg as FigureCanvas,
+        NavigationToolbar2QT as NavigationToolbar)
+from matplotlib.widgets import MultiCursor
 import platform
 import ctypes
+import sys
+
+
+from traits.api import HasTraits, Instance, on_trait_change
+from traitsui.api import View, Item
+from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+
+
 
 import bombo as bombo
-
-"""
-TODO
-
-
-"""
 
 
 """
@@ -46,6 +69,10 @@ http://zetcode.com/gui/pyqt5/layout/
 http://zetcode.com/gui/pyqt5/dialogs/
 https://pythonspot.com/en/pyqt5-matplotlib/
 https://pythonspot.com/en/pyqt5/
+
+QtPy
+I need to use this cos I've already upgraded my code from 4 to 5 and now I see I need to use 4 as mayavi only works with 4.
+https://pypi.python.org/pypi/QtPy
 
 Plots
 http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
@@ -274,6 +301,58 @@ class EmbeddedPlot_SpeedVariance(FigureCanvas):
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
+        
+        
+class MayaviQWidget(QWidget):
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+        self.visualization = Visualization()
+
+        # If you want to debug, beware that you need to remove the Qt
+        # input hook.
+        #QtCore.pyqtRemoveInputHook()
+        #import pdb ; pdb.set_trace()
+        #QtCore.pyqtRestoreInputHook()
+
+        # The edit_traits call will generate the widget to embed.
+        self.ui = self.visualization.edit_traits(parent=self, kind='subpanel').control
+        layout.addWidget(self.ui)
+        self.ui.setParent(self)
+    
+    # I created this function to call the visualization.update_plot function, that is part of the Visualization class
+    def update_plot(self, terrain, track):
+        self.visualization.update_plot(terrain, track)
+        
+class Visualization(HasTraits):
+    scene = Instance(MlabSceneModel, ())
+
+    #@on_trait_change('scene.activated')
+    def update_plot(self, terrain, track):
+        # This function is called when the view is opened. We don't
+        # populate the scene when the view is not yet open, as some
+        # VTK features require a GLContext.
+
+        # We can do normal mlab calls on the embedded scene.
+        # self.scene.mlab.test_points3d()
+        
+        # Here's were I embedded my code
+        self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
+        self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
+                               color=track['color'],
+                               line_width=track['line_width'],
+                               tube_radius=track['tube_radius'])
+
+    # the layout of the dialog screated
+    view = View(Item('scene',
+                     editor=SceneEditor(scene_class=MayaviScene),
+                     height=250,
+                     width=300,
+                     show_label=False),
+                resizable=True # We need this to resize with the parent widget
+                )
 
 
 class MainWindow(QMainWindow):
@@ -293,7 +372,7 @@ class MainWindow(QMainWindow):
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
-        # print "Last used directory: {}".format(old_directory)
+        # print "Last used directory: {}\n".format(old_directory)
         
         # Check if the setting exists
         if old_directory is not None:
@@ -310,9 +389,13 @@ class MainWindow(QMainWindow):
                                                          'Open .gpx',
                                                          "tracks",
                                                          "GPX files (*.gpx)")
+        if os.environ['QT_API'] == 'pyqt':
+            pass
+        elif os.environ['QT_API'] == 'pyqt5':
+            fullfilename_list = fullfilename_list[0]
         
         # Process every selected file
-        for i, fullfilename in enumerate(fullfilename_list[0]):
+        for i, fullfilename in enumerate(fullfilename_list):
             # Process filename
             directory, filename = os.path.split(str(fullfilename))
             filename, fileextension = os.path.splitext(filename)
@@ -320,8 +403,12 @@ class MainWindow(QMainWindow):
             # Save the new directory in the application settings (it only
             # needs to be done once)
             if i == 0:
-                self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
-            
+                # print "New directory to be saved: {}\n".format(directory)
+                if os.environ['QT_API'] == 'pyqt':
+                    self.settings.setValue("lastdirectory", str(directory))
+                elif os.environ['QT_API'] == 'pyqt5':
+                    self.settings.setValue("lastdirectory", QtCore.QVariant(str(directory)))
+                
             # Open file and inspect what's inside
             gpxraw, longest_traseg, Ntracks, Nsegments, infos = bombo.LoadGPX(fullfilename)
             
@@ -452,7 +539,10 @@ class MainWindow(QMainWindow):
                                 rdp_reduction=self.checkUseRDP.isChecked())
                 
             # Generate 3D plot
-            bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], 400)
+            if len(self.gpxselectedlist) == 1:
+                terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'])
+                self.map3d.update_plot(terrain, track)
+            
                 
         else:
             self.textOutput.setText("You need to open a .gpx file before!")
@@ -500,9 +590,9 @@ class MainWindow(QMainWindow):
                 self.selectedpalette.append(self.palette[i.row()])
 
         # Application Settings
-        QtCore.QCoreApplication.setOrganizationName("Steba")
+        QtCore.QCoreApplication.setOrganizationName("Ste")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
-        QtCore.QCoreApplication.setApplicationName("Steba")
+        QtCore.QCoreApplication.setApplicationName("TrackAnalyser")
         self.settings = QtCore.QSettings(self)
         
         # Actions
@@ -524,20 +614,21 @@ class MainWindow(QMainWindow):
         quitapp.setStatusTip("Quit application")
         quitapp.triggered.connect(qApp.quit)
         
-        # Status bar
-        self.statusBar().show()
-        
         # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        toolbar.setIconSize(QtCore.QSize(48,48))
         
         # Menu bar
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&What do you wanna do?')
         fileMenu.addAction(openfile)
+        
+        # Status bar
+        self.statusBar().show()
         
         # Main widget (everything that's not toolbar, statusbar or menubar must be in this widget)
         self.scatola = QWidget()
@@ -632,6 +723,18 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab1.setLayout(vBox_right)
         
+        # Tab 5: 3D plot
+        tab5 = QWidget()
+        # The tab layout
+        vBox_right = QVBoxLayout()
+        vBox_right.setSpacing(5)
+        # Area
+        self.map3d = MayaviQWidget()
+        # Add widgets to the layout
+        vBox_right.addWidget(self.map3d)
+        # Associate the layout to the tab
+        tab5.setLayout(vBox_right)
+        
         # Tab 2: Coordinates and variance
         tab2 = QWidget()
         # The tab layout
@@ -682,6 +785,7 @@ class MainWindow(QMainWindow):
         
         # Associate tabs
         tab.addTab(tab1, "Summary")
+        tab.addTab(tab5, "3D")
         tab.addTab(tab2, "Coordinates and variance")
         tab.addTab(tab3, "Elevation and variance")
         tab.addTab(tab4, "Speed and variance")
@@ -693,7 +797,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.scatola)
         
         # Application settings
-        self.setWindowTitle('STEBA GUI')
+        self.setWindowTitle('TrackAnalyser')
         self.setWindowIcon((QtGui.QIcon('icons/app.png')))
         self.setGeometry(100, 100, 1200, 700)
         self.show()
@@ -709,7 +813,7 @@ if platform.system() == "Darwin":
     pass
 elif platform.system() == 'Windows':
     # On Windows
-    myappid = 'Steba.Steba.Steba.v0.1' # arbitrary string
+    myappid = 'Ste.Sport.TrackAnalyser.v0.1' # arbitrary string
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
 main.show()
