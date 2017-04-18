@@ -20,13 +20,16 @@ import sys
 import gdal_merge as gm
 
 startingpoint = (44.1938472, 10.7012833)    # Cimone
+# startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
 
-startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
-
-track_lat = np.arange(startingpoint[0], startingpoint[0]+0.05, 0.00001).transpose()
+track_lat = np.arange(startingpoint[0], startingpoint[0]+1.5, 0.01).transpose()
 track_lon = np.tile(startingpoint[1], (len(track_lat)))
 margin = 500
 zscale = 1
+tracksize = 200.0
+verbose = True
+ELEVATION_DATA_FOLDER = "elevationdata/"
+TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 
 
 
@@ -70,36 +73,39 @@ lon_max = np.max(track_lon) + margin * px2deg
 # Determine which tiles are necessary
 tile_corner_min = SRTMTile(lat_min, lon_min)
 tile_corner_max = SRTMTile(lat_max, lon_max)
-tiles_lat = range(tile_corner_min[0], tile_corner_max[0]+1)
-tiles_lon = range(tile_corner_min[1], tile_corner_max[1]+1)
+tiles_x = range(tile_corner_min[0], tile_corner_max[0]+1)
+tiles_y = range(tile_corner_max[1], tile_corner_min[1]+1) # Inverted min and max as tiles are numbered, vertically, from north to south 
 
-# For debug
-#tiles_lat = range(38, 39+1)
-#tiles_lon = range(4, 4+1)
-
-print "\nHorizontal tiles: {}".format(tiles_lat)
-print "Vertical tiles: {}\n".format(tiles_lon)
-
-if len(tiles_lat) > 1 or len(tiles_lon) > 1:
-    # More than one tile is needed: generate tile names and merge them
-    gdal_merge_command_list = ['', '-o', 'elevationdata/tmp.tif']
-    for tile_lat in tiles_lat:
-        for tile_lon in tiles_lon:
-            # Generate tile filename and append it to the list
-            tilename = "srtm_{:02d}_{:02d}".format(tile_lat, tile_lon)
-            filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
-            gdal_merge_command_list.append(filename)
-            if not os.path.isfile(filename):
-                print "Elevation profile for this location ({}) has not been downloaded.".format(tilename)
-    # Merge
-    print gdal_merge_command_list
-    gm.main(gdal_merge_command_list)
-    filename = "elevationdata/tmp.tif".format(tilename, tilename)
+if verbose:
+    print "Required tiles:"
+    print "X: {}".format(tiles_x)
+    print "Y: {}".format(tiles_y)
+    
+if len(tiles_x) > 1 or len(tiles_y) > 1:
+    # More than one tile is needed, check if the mosaic has already been
+    # generated in the past or if we need to generate it now
+    merged_tile_name = "from_{:02}_{:02}_to_{:02}_{:02}.tif".format(tiles_x[0], tiles_y[0], tiles_x[-1], tiles_y[-1])
+    if not os.path.isfile(ELEVATION_DATA_FOLDER + merged_tile_name):
+        # Create mosaic: generate tile names and merge them
+        gdal_merge_command_list = ['', '-o', ELEVATION_DATA_FOLDER + merged_tile_name]
+        for tile_x in tiles_x:
+            for tile_y in tiles_y:
+                # Generate tile filename and append it to the list
+                tilename = "srtm_{:02d}_{:02d}".format(tile_x, tile_y)
+                filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+                gdal_merge_command_list.append(filename)
+                if not os.path.isfile(filename):
+                    print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+        if verbose:
+            print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
+        gm.main(gdal_merge_command_list)
+    filename = ELEVATION_DATA_FOLDER + merged_tile_name
 else:
-    tilename = "srtm_{:02d}_{:02d}".format(tiles_lat[0], tiles_lon[0])
-    filename = "elevationdata/{}/{}.tif".format(tilename, tilename)
+    # Only one tile is needed
+    tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
+    filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
     if not os.path.isfile(filename):
-        print "Elevation profile for this location ({}) has not been downloaded.".format(tilename)
+        print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
 
 # Read SRTM GeoTiff elevation file 
 ds = gdal.Open(filename)
@@ -112,16 +118,21 @@ tile_lat_min = gt[3] + width*gt[4] + height*gt[5]
 tile_lat_max = gt[3]
 tile_ele = ds.GetRasterBand(1)
 
-print "Latitude:  {} <-- {} -- {} --> {}".format(tile_lat_min, lat_min, lat_max, tile_lat_max)
-print "Longitude: {} <-- {} -- {} --> {}\n".format(tile_lon_min, lon_min, lon_max, tile_lon_max)
+if verbose:
+    print "\nCoordinate boundaries:"
+    print "Longitude (X): {} <-- {} -- {} --> {}".format(tile_lon_min, lon_min, lon_max, tile_lon_max)
+    print "Latitude (Y):  {} <-- {} -- {} --> {}".format(tile_lat_min, lat_min, lat_max, tile_lat_max)
 
 # Selecting only a zone of the whole map, the one we're interested in plotting
 zone_x_min = int((lon_min - tile_lon_min)/gt[1])
 zone_x_size = int((lon_max - lon_min)/gt[1])
 zone_y_min = int((lat_max - tile_lat_max)/gt[5])
-zone_y_size = int((lat_min - lat_max)/gt[5])
-print zone_x_min, zone_x_size
-print zone_y_min, zone_y_size
+zone_y_size = int((lat_min - lat_max)/gt[5])  # Inverted min and max as tiles are numbered, vertically, from north to south 
+
+if verbose:
+    print "\nSelected zone:"
+    print "Longitude (X): Start: {}, Size: {}".format(zone_x_min, zone_x_size)
+    print "Latitude (Y):  Start: {}, Size: {}".format(zone_y_min, zone_y_size)
 
 # Read elevation data
 zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
@@ -155,7 +166,7 @@ for i in range(np.size(track_lat, axis=0)):
 # Display path nodes as spheres
 # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
 # Display path as line
-mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=50.0)
+mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=tracksize)
 
 # Show the 3D map
 mlab.show()
