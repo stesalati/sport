@@ -539,8 +539,9 @@ class MainWindow(QMainWindow):
                                 rdp_reduction=self.checkUseRDP.isChecked())
                 
             # Generate 3D plot
-            terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'], False, False)
-            self.map3d.update_plot(terrain, track)
+            if len(self.gpxselectedlist) == 1:
+                terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'])
+                self.map3d.update_plot(terrain, track)
             
                 
         else:
@@ -613,20 +614,21 @@ class MainWindow(QMainWindow):
         quitapp.setStatusTip("Quit application")
         quitapp.triggered.connect(qApp.quit)
         
-        # Status bar
-        self.statusBar().show()
-        
         # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        toolbar.setIconSize(QtCore.QSize(48,48))
         
         # Menu bar
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&What do you wanna do?')
         fileMenu.addAction(openfile)
+        
+        # Status bar
+        self.statusBar().show()
         
         # Main widget (everything that's not toolbar, statusbar or menubar must be in this widget)
         self.scatola = QWidget()

@@ -1156,9 +1156,6 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
         mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
     
     # Hiking path
-    print np.size(track_lat, axis = 0)
-    print np.size(track_lon, axis = 0)
-    
     track_x_m = list()
     track_y_m = list()
     track_z_m = list()
