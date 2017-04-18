@@ -2,48 +2,34 @@
 # ipython -wthread
 
 from mayavi import mlab
-
-
 import numpy as np
 from osgeo import gdal, osr
 #import OsmApi
 import math
 import os
 import sys
-#from PyAstronomy import pyasl
-
 
 #sys.path.append('C:/Users/salatis/AppData/Local/Continuum/Anaconda2/Scripts')
 #sys.path.append('~/anaconda/bin/')
-
-
 import gdal_merge as gm
+
 
 startingpoint = (44.1938472, 10.7012833)    # Cimone
 # startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
-
 track_lat = np.arange(startingpoint[0], startingpoint[0]+1.5, 0.01).transpose()
 track_lon = np.tile(startingpoint[1], (len(track_lat)))
-tracksize = 200.0
 verbose = True
 
-MARGIN = 500
-ZSCALE = 1
+MARGIN_ON_3DMAP = 500
+ELEVATION_SCALE_ON_3DMAP = 1
+TRACE_SIZE_ON_3DMAP = 200.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
-
-
-
-
-
-
 
 
 """
 ACTUAL FUNCTION UNDER TEST
 """
-
-
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
     ytile = int(np.trunc((60 - lat) / (360/72) + 1))
@@ -66,10 +52,10 @@ px2deg = 0.0008333333333333334
 # Determine the coordinates of the area we are interested in
 center = ((np.max(track_lat) + np.min(track_lat))/2, (np.max(track_lon) + np.min(track_lon))/2)
 span_deg = np.max([np.max(track_lat)-np.min(track_lat), np.max(track_lon)-np.min(track_lon)])
-lat_min = np.min(track_lat) - MARGIN * px2deg
-lat_max = np.max(track_lat) + MARGIN * px2deg
-lon_min = np.min(track_lon) - MARGIN * px2deg
-lon_max = np.max(track_lon) + MARGIN * px2deg
+lat_min = np.min(track_lat) - MARGIN_ON_3DMAP * px2deg
+lat_max = np.max(track_lat) + MARGIN_ON_3DMAP * px2deg
+lon_min = np.min(track_lon) - MARGIN_ON_3DMAP * px2deg
+lon_max = np.max(track_lon) + MARGIN_ON_3DMAP * px2deg
 
 # Determine which tiles are necessary
 tile_corner_min = SRTMTile(lat_min, lon_min)
@@ -151,7 +137,7 @@ for x, y in np.ndindex(array_x_deg.shape):
   array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
 
 # Display 3D surface
-mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * ZSCALE)
+mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * ELEVATION_SCALE_ON_3DMAP)
 
 # Hiking path
 track_x_m = list()
@@ -167,7 +153,7 @@ for i in range(np.size(track_lat, axis=0)):
 # Display path nodes as spheres
 # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
 # Display path as line
-mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=tracksize)
+mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0,102.0/255.0,0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
 
 # Show the 3D map
 mlab.show()
