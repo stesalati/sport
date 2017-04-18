@@ -24,10 +24,11 @@ startingpoint = (44.1938472, 10.7012833)    # Cimone
 
 track_lat = np.arange(startingpoint[0], startingpoint[0]+1.5, 0.01).transpose()
 track_lon = np.tile(startingpoint[1], (len(track_lat)))
-margin = 500
-zscale = 1
 tracksize = 200.0
 verbose = True
+
+MARGIN = 500
+ZSCALE = 1
 ELEVATION_DATA_FOLDER = "elevationdata/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 
@@ -65,10 +66,10 @@ px2deg = 0.0008333333333333334
 # Determine the coordinates of the area we are interested in
 center = ((np.max(track_lat) + np.min(track_lat))/2, (np.max(track_lon) + np.min(track_lon))/2)
 span_deg = np.max([np.max(track_lat)-np.min(track_lat), np.max(track_lon)-np.min(track_lon)])
-lat_min = np.min(track_lat) - margin * px2deg
-lat_max = np.max(track_lat) + margin * px2deg
-lon_min = np.min(track_lon) - margin * px2deg
-lon_max = np.max(track_lon) + margin * px2deg
+lat_min = np.min(track_lat) - MARGIN * px2deg
+lat_max = np.max(track_lat) + MARGIN * px2deg
+lon_min = np.min(track_lon) - MARGIN * px2deg
+lon_max = np.max(track_lon) + MARGIN * px2deg
 
 # Determine which tiles are necessary
 tile_corner_min = SRTMTile(lat_min, lon_min)
@@ -150,7 +151,7 @@ for x, y in np.ndindex(array_x_deg.shape):
   array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
 
 # Display 3D surface
-mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * zscale)
+mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * ZSCALE)
 
 # Hiking path
 track_x_m = list()
