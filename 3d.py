@@ -20,7 +20,7 @@ TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 
 track_lat = None
 track_lon = None
-margin=100
+margin=1500
 elevation_scale=1
 plot=True
 verbose=False
@@ -51,7 +51,8 @@ px2deg = 0.0008333333333333334
 # If track_lat and track_lon are None, run a demo
 if track_lat == track_lon == None:
     # startingpoint = (44.1938472, 10.7012833)    # Cimone
-    startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
+    # startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
+    startingpoint = (-8.4166000, 116.4666000)
     R = 0.01
     track_lat1 = np.linspace(-R, R, 1000).transpose()
     track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
@@ -136,6 +137,9 @@ if verbose:
 
 # Read elevation data
 zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
+
+# Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
+zone_ele[zone_ele < 418] = 0
 
 # Create X,Y coordinates for zone_ele array (contains Z in meters)
 line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+zone_x_size)*gt[1], gt[1])[0:zone_x_size]
