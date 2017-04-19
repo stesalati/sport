@@ -20,10 +20,12 @@ TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 
 track_lat = None
 track_lon = None
-margin=1500
+tile_selection = 'auto'
+tile_selection = 'iceland.tif'
+margin=500
 elevation_scale=1
 plot=True
-verbose=False
+verbose=True
 
 """
 ACTUAL FUNCTION UNDER TEST
@@ -51,8 +53,9 @@ px2deg = 0.0008333333333333334
 # If track_lat and track_lon are None, run a demo
 if track_lat == track_lon == None:
     # startingpoint = (44.1938472, 10.7012833)    # Cimone
-    # startingpoint = (46.5145639, 011.7398472)   # Rif. Demetz
-    startingpoint = (-8.4166000, 116.4666000)
+    # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
+    # startingpoint = (-8.4166000, 116.4666000)   # Rinjani
+    startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
     R = 0.01
     track_lat1 = np.linspace(-R, R, 1000).transpose()
     track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
@@ -62,51 +65,57 @@ if track_lat == track_lon == None:
     track_lon = np.hstack((track_lon1[0:-2], track_lon2))
     track_lat = track_lat + startingpoint[0]
     track_lon = track_lon + startingpoint[1]
-
-# Determine the coordinates of the area we are interested in
-lat_min = np.min(track_lat) - margin * px2deg
-lat_max = np.max(track_lat) + margin * px2deg
-lon_min = np.min(track_lon) - margin * px2deg
-lon_max = np.max(track_lon) + margin * px2deg
-
-# Determine which tiles are necessary
-tile_corner_min = SRTMTile(lat_min, lon_min)
-tile_corner_max = SRTMTile(lat_max, lon_max)
-tiles_x = range(tile_corner_min[0], tile_corner_max[0]+1)
-tiles_y = range(tile_corner_max[1], tile_corner_min[1]+1) # Inverted min and max as tiles are numbered, vertically, from north to south 
-
-if verbose:
-    print "Required tiles:"
-    print "X: {}".format(tiles_x)
-    print "Y: {}".format(tiles_y)
     
-if len(tiles_x) > 1 or len(tiles_y) > 1:
-    # More than one tile is needed, check if the mosaic has already been
-    # generated in the past or if we need to generate it now
-    merged_tile_name = "from_{:02}_{:02}_to_{:02}_{:02}.tif".format(tiles_x[0], tiles_y[0], tiles_x[-1], tiles_y[-1])
-    if not os.path.isfile(ELEVATION_DATA_FOLDER + merged_tile_name):
-        # Create mosaic: generate tile names and merge them
-        gdal_merge_command_list = ['', '-o', ELEVATION_DATA_FOLDER + merged_tile_name]
-        for tile_x in tiles_x:
-            for tile_y in tiles_y:
-                # Generate tile filename and append it to the list
-                tilename = "srtm_{:02d}_{:02d}".format(tile_x, tile_y)
-                filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
-                gdal_merge_command_list.append(filename)
-                if not os.path.isfile(filename):
-                    print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
-                    #return
-        if verbose:
-            print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
-        gm.main(gdal_merge_command_list)
-    filename = ELEVATION_DATA_FOLDER + merged_tile_name
+    # Determine the coordinates of the area we are interested in
+    lat_min = np.min(track_lat) - margin * px2deg
+    lat_max = np.max(track_lat) + margin * px2deg
+    lon_min = np.min(track_lon) - margin * px2deg
+    lon_max = np.max(track_lon) + margin * px2deg
+
+if tile_selection == 'auto':
+    # Tiles will be determined automatically
+    # Determine which tiles are necessary
+    tile_corner_min = SRTMTile(lat_min, lon_min)
+    tile_corner_max = SRTMTile(lat_max, lon_max)
+    tiles_x = range(tile_corner_min[0], tile_corner_max[0]+1)
+    tiles_y = range(tile_corner_max[1], tile_corner_min[1]+1) # Inverted min and max as tiles are numbered, vertically, from north to south 
+    
+    if verbose:
+        print "Required tiles:"
+        print "X: {}".format(tiles_x)
+        print "Y: {}".format(tiles_y)
+        
+    if len(tiles_x) > 1 or len(tiles_y) > 1:
+        # More than one tile is needed, check if the mosaic has already been
+        # generated in the past or if we need to generate it now
+        merged_tile_name = "from_{:02}_{:02}_to_{:02}_{:02}.tif".format(tiles_x[0], tiles_y[0], tiles_x[-1], tiles_y[-1])
+        if not os.path.isfile(ELEVATION_DATA_FOLDER + merged_tile_name):
+            # Create mosaic: generate tile names and merge them
+            gdal_merge_command_list = ['', '-o', ELEVATION_DATA_FOLDER + merged_tile_name]
+            for tile_x in tiles_x:
+                for tile_y in tiles_y:
+                    # Generate tile filename and append it to the list
+                    tilename = "srtm_{:02d}_{:02d}".format(tile_x, tile_y)
+                    filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+                    gdal_merge_command_list.append(filename)
+                    if not os.path.isfile(filename):
+                        print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+                        #return
+            if verbose:
+                print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
+            gm.main(gdal_merge_command_list)
+        filename = ELEVATION_DATA_FOLDER + merged_tile_name
+    else:
+        # Only one tile is needed
+        tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
+        filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+        if not os.path.isfile(filename):
+            print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+            #return
+            
 else:
-    # Only one tile is needed
-    tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
-    filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
-    if not os.path.isfile(filename):
-        print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
-        #return
+    # The tile name is provided (useful for those areas, e.g. Iceland, not covered by the SRTM survey)
+    filename = ELEVATION_DATA_FOLDER + tile_selection
 
 # Read SRTM GeoTiff elevation file 
 ds = gdal.Open(filename)
