@@ -5,28 +5,15 @@
 @mail: stef.salati@gmail.com
 """
 
-# COMMENTS ABOUT THE EMBEDDING OF MAYAVI IN PYQT
-# By default, the PySide binding will be used. If you want the PyQt bindings
-# to be used, you need to set the QT_API environment variable to 'pyqt'
-#os.environ['QT_API'] = 'pyqt'
-
-# To be able to use PySide or PyQt4 and not run in conflicts with traits,
-# we need to import QtGui and QtCore from pyface.qt
-#from pyface.qt import QtGui, QtCore
-# Alternatively, you can bypass this line, but you need to make sure that
-# the following lines are executed before the import of PyQT:
-#   import sip
-#   sip.setapi('QString', 2)
-
 import os
 os.environ['QT_API'] = 'pyqt'
-
 os.environ['ETS_TOOLKIT'] = 'qt4'
 
 from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
                              QCheckBox, QComboBox, QSizePolicy, QTabWidget,
-                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
+                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
+                             QTreeView, QSpinBox, QDoubleSpinBox)
 from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
@@ -46,19 +33,22 @@ import platform
 import ctypes
 import sys
 
-
+# Comments for mayavi integration in pyqt (I ignored them and it works nevertheless)
+# To be able to use PySide or PyQt4 and not run in conflicts with traits,
+# we need to import QtGui and QtCore from pyface.qt
+#from pyface.qt import QtGui, QtCore
+# Alternatively, you can bypass this line, but you need to make sure that
+# the following lines are executed before the import of PyQT:
+#   import sip
+#   sip.setapi('QString', 2)
 from traits.api import HasTraits, Instance, on_trait_change
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
-
-
 import bombo as bombo
-
 
 """
 DOCUMENTATION
-
 PyQt4
 http://www.python.it/wiki/show/qttutorial/
 http://zetcode.com/gui/pyqt4/menusandtoolbars/
@@ -339,6 +329,7 @@ class Visualization(HasTraits):
         # self.scene.mlab.test_points3d()
         
         # Here's were I embedded my code
+        self.scene.mlab.clf()
         self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
         self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
                                color=track['color'],
@@ -446,35 +437,61 @@ class MainWindow(QMainWindow):
             self.proc_state_vars = []
             self.proc_new_coords = []
             self.proc_new_gpx = []
-            self.proc_infos = []
             self.proc_coords_to_plot = []
             self.proc_coords_to_plot2 = []
             self.proc_balloondata = []
             
             # For every GPX file that is selected
-            self.textOutput.setText("")
+            self.textWarningConsole.clear()
             for i, currentgpx in enumerate(self.gpxselectedlist):
-                self.textOutput.append("**** {} ****\n".format(self.gpxselectednamelist[i]))
-                
                 # Parse the GPX file
-                gpx, coords, infos = bombo.ParseGPX(currentgpx,
-                                                    track_nr=0,
-                                                    segment_nr=0,
-                                                    use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
-                self.textOutput.append(infos)
+                gpx, coords, dinfos_before, warnings = bombo.ParseGPX(currentgpx,
+                                                                      track_nr=0,
+                                                                      segment_nr=0,
+                                                                      use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
+                self.textWarningConsole.append(warnings)
                 
                 # Kalman processing
-                coords, measurements, state_means, state_vars, infos = bombo.ApplyKalmanFilter(coords,
-                                                                                               gpx,
-                                                                                               method=self.comboBoxProcessingMethod.currentIndex(), 
-                                                                                               use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                               extra_smooth=self.checkExtraSmooth.isChecked(),
-                                                                                               debug_plot=False)
-                self.textOutput.append(infos)
+                coords, measurements, state_means, state_vars, dinfos_during = bombo.ApplyKalmanFilter(coords,
+                                                                                                       gpx,
+                                                                                                       method=self.comboBoxProcessingMethod.currentIndex(), 
+                                                                                                       use_acceleration=self.checkUseAcceleration.isChecked(),
+                                                                                                       extra_smooth=self.checkExtraSmooth.isChecked(),
+                                                                                                       debug_plot=False)
                 
                 # Save data in GPX structure to compute speed and elevations
-                new_coords, new_gpx, infos = bombo.SaveDataToCoordsAndGPX(coords, state_means)
-                self.textOutput.append(infos)
+                new_coords, new_gpx, dinfos_after = bombo.SaveDataToCoordsAndGPX(coords, state_means)
+                
+                # Update GUI with the computed stats               
+                parent = QtGui.QStandardItem(self.gpxselectednamelist[i])
+                
+                parent_beforeprocessing = QtGui.QStandardItem("Raw GPX stats")
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Total distance"), QtGui.QStandardItem(dinfos_before['total_distance'])])
+                parent_beforeprocessing_moving = QtGui.QStandardItem("Moving")
+                parent_beforeprocessing_moving.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_before['moving_time'])])
+                parent_beforeprocessing_moving.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_before['moving_distance'])])
+                parent_beforeprocessing.appendRow(parent_beforeprocessing_moving)
+                parent_beforeprocessing_idle = QtGui.QStandardItem("Idle")
+                parent_beforeprocessing_idle.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_before['idle_time'])])
+                parent_beforeprocessing_idle.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_before['idle_distance'])])
+                parent_beforeprocessing.appendRow(parent_beforeprocessing_idle)
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Elevation"), QtGui.QStandardItem(dinfos_before['elevation'])])
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Climb"), QtGui.QStandardItem(dinfos_before['climb'])])
+                parent.appendRow(parent_beforeprocessing)
+                
+                parent.appendRow([QtGui.QStandardItem("Samples"), QtGui.QStandardItem(dinfos_during['nsamples'])])
+                parent.appendRow([QtGui.QStandardItem("Total distance"), QtGui.QStandardItem(dinfos_after['total_distance'])])
+                parent_moving = QtGui.QStandardItem("Moving")
+                parent_moving.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_after['moving_time'])])
+                parent_moving.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_after['moving_distance'])])
+                parent.appendRow(parent_moving)
+                parent_idle = QtGui.QStandardItem("Idle")
+                parent_idle.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_after['idle_time'])])
+                parent_idle.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_after['idle_distance'])])
+                parent.appendRow(parent_idle)
+                parent.appendRow([QtGui.QStandardItem("Elevation"), QtGui.QStandardItem(dinfos_after['elevation'])])
+                parent.appendRow([QtGui.QStandardItem("Climb"), QtGui.QStandardItem(dinfos_after['climb'])])
+                self.treemodel.appendRow(parent)
         
                 # Create balloondata for the html plot
                 balloondata = {'distance': np.cumsum(bombo.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
@@ -491,14 +508,13 @@ class MainWindow(QMainWindow):
                                'palette': ('blue','red')}
                 """
                 
-                # Saverelevant output in global variables
+                # Save relevant output in global variables
                 self.proc_coords.append(coords)
                 self.proc_measurements.append(measurements)
                 self.proc_state_means.append(state_means)
                 self.proc_state_vars.append(state_vars)
                 self.proc_new_coords.append(new_coords)
                 self.proc_new_gpx.append(new_gpx)
-                self.proc_infos.append(infos)
                 self.proc_coords_to_plot.append(np.vstack((new_coords['lat'], new_coords['lon'])).T)
                 self.proc_coords_to_plot2.append(np.vstack((coords['lat'], coords['lon'])).T)
                 self.proc_balloondata.append(balloondata)
@@ -540,12 +556,13 @@ class MainWindow(QMainWindow):
                 
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
-                terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'])
+                terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
+                                                             margin=float(self.spinbox3DMargin.value()),
+                                                             elevation_scale=float(self.spinbox3DElevationScale.value()))
+                self.textWarningConsole.append(warnings)
                 self.map3d.update_plot(terrain, track)
-            
-                
         else:
-            self.textOutput.setText("You need to open a .gpx file before!")
+            self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
 
     def __init__(self, parent=None):
@@ -568,7 +585,6 @@ class MainWindow(QMainWindow):
         self.proc_state_vars = list()
         self.proc_new_coords = list()
         self.proc_new_gpx = list()
-        self.proc_infos = list()
         self.proc_coords_to_plot = list()
         self.proc_coords_to_plot2 = list()
         self.proc_balloondata = list()
@@ -620,7 +636,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(go)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(48,48))
+        toolbar.setIconSize(QtCore.QSize(24,24))
         
         # Menu bar
         menubar = self.menuBar()
@@ -646,6 +662,7 @@ class MainWindow(QMainWindow):
         vBox_left.addWidget(self.tracklist)
         self.tracklist.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tracklist.itemSelectionChanged.connect(selection_changed)
+        self.tracklist.setMaximumHeight(120)
         
         # 2nd vertical box, containing several horizontal boxes, one for each setting
         vBox2 = QVBoxLayout()
@@ -686,22 +703,58 @@ class MainWindow(QMainWindow):
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
+        # Settings for the 3D map
+        label3DViewSettings = QLabel('3D view settings')
+        vBox2.addWidget(label3DViewSettings)
+        hBox3D = QHBoxLayout()
+        label3DMargin = QLabel('Margin')
+        hBox3D.addWidget(label3DMargin)
+        self.spinbox3DMargin = QSpinBox()
+        self.spinbox3DMargin.setRange(50,1000)
+        self.spinbox3DMargin.setSingleStep(10)
+        hBox3D.addWidget(self.spinbox3DMargin)
+        labelSpace = QLabel('  ')
+        hBox3D.addWidget(labelSpace)
+        label3DElevationScale = QLabel('Elevation scale')
+        hBox3D.addWidget(label3DElevationScale)
+        self.spinbox3DElevationScale = QDoubleSpinBox()
+        self.spinbox3DElevationScale.setRange(1,50)
+        self.spinbox3DElevationScale.setSingleStep(0.1)
+        hBox3D.addWidget(self.spinbox3DElevationScale)
+        vBox2.addLayout(hBox3D)
+        
         vBox_left.addLayout(vBox2)
-                
-        # 3rd text, containing the processing output
-        self.textOutput = QTextEdit()
-        self.textOutput.setReadOnly(True)
-        self.textOutput.setFont(QtGui.QFont("Courier New", FONTSIZE))
-        self.textOutput.clear()
-        vBox_left.addWidget(self.textOutput)
+        
+        # 3rd stats tree
+        self.tree = QTreeView()
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.treemodel = QtGui.QStandardItemModel()
+        self.treemodel.setHorizontalHeaderLabels(['Name', 'Value'])
+        self.tree.setModel(self.treemodel)
+        self.tree.setUniformRowHeights(True)
+        
+        #index = self.treemodel.indexFromItem(parent1)
+        #self.tree.expand(index)
+        #selmod = self.tree.selectionModel()
+        #index2 = self.treemodel.indexFromItem(child2)
+        #selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
+        vBox_left.addWidget(self.tree)
+        
+        # 4th text, containing text messages/errors
+        self.textWarningConsole = QTextEdit()
+        self.textWarningConsole.setReadOnly(True)
+        self.textWarningConsole.setFont(QtGui.QFont("Courier New", FONTSIZE))
+        self.textWarningConsole.clear()
+        self.textWarningConsole.setMaximumHeight(50)
+        vBox_left.addWidget(self.textWarningConsole)
         
         # I put "vBox_left" inside a widget and then the widget inside "hBox"
         # instead of just doing "hBox.addLayout(vBox_left) so I can set its
         # maximum width.
         vBox_left_widget = QWidget()
         vBox_left_widget.setLayout(vBox_left)
-        vBox_left_widget.setMinimumWidth(300)
-        vBox_left_widget.setMaximumWidth(400)
+        vBox_left_widget.setMinimumWidth(400)
+        vBox_left_widget.setMaximumWidth(500)
         hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
@@ -817,6 +870,6 @@ elif platform.system() == 'Windows':
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
 main.show()
-sys.exit(app.exec_())
+#sys.exit(app.exec_())
 # Alternative:
-# app.exec_()
+app.exec_()
