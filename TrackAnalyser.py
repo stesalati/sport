@@ -13,7 +13,7 @@ from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                              QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
                              QCheckBox, QComboBox, QSizePolicy, QTabWidget,
                              QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
-                             QTreeView, QSpinBox, QDoubleSpinBox)
+                             QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog)
 from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
@@ -557,14 +557,62 @@ class MainWindow(QMainWindow):
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
                 terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
-                                                             margin=float(self.spinbox3DMargin.value()),
-                                                             elevation_scale=float(self.spinbox3DElevationScale.value()))
+                                                             margin=self.spinbox3DMargin.value(),
+                                                             elevation_scale=self.spinbox3DElevationScale.value())
                 self.textWarningConsole.append(warnings)
-                self.map3d.update_plot(terrain, track)
+                if terrain is not None:    
+                    self.map3d.update_plot(terrain, track)
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
+    
+    def PlotSpecificAreaDialog(self):
+        
+        def PlotSpecificArea():
+            terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLat.value()], [self.spinboxLon.value()],
+                                                          margin=self.spinbox3DMargin.value(),
+                                                          elevation_scale=self.spinbox3DElevationScale.value())
+            self.textWarningConsole.append(warnings)
+            if terrain is not None:    
+                self.map3d.update_plot(terrain, track)
+            d.done(0)
+        
+        d = QDialog()
+        
+        hBox = QHBoxLayout()
+        hBox.setSpacing(5)
+        
+        hBox_coords = QHBoxLayout()
+        hBox_coords.setSpacing(5)
+        
+        label = QLabel('Coordinates')
+        hBox_coords.addWidget(label)
+        
+        self.spinboxLat = QDoubleSpinBox()
+        self.spinboxLat.setRange(-90,+90)
+        self.spinboxLat.setSingleStep(0.0000001)
+        self.spinboxLat.setDecimals(7)
+        self.spinboxLat.setValue(-8.4166000)
+        hBox_coords.addWidget(self.spinboxLat)
+        
+        self.spinboxLon = QDoubleSpinBox()
+        self.spinboxLon.setRange(-180,+180)
+        self.spinboxLon.setSingleStep(0.0000001)
+        self.spinboxLon.setDecimals(7)
+        self.spinboxLon.setValue(116.4666000)
+        hBox_coords.addWidget(self.spinboxLon)
+        
+        hBox.addLayout(hBox_coords)
+        
+        button = QPushButton("Show 3D map")
+        button.clicked.connect(PlotSpecificArea)
+        hBox.addWidget(button)
 
+        d.setWindowTitle("Show point on 3D map")
+        d.setLayout(hBox)
+        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        d.exec_()
+        
     def __init__(self, parent=None):
         super(MainWindow, self).__init__()
         self.initVariables()
@@ -622,6 +670,11 @@ class MainWindow(QMainWindow):
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
+        showpoint = QAction(QtGui.QIcon("icons/go.png"), "Show point", self)
+        showpoint.setShortcut("Ctrl+P")
+        showpoint.setStatusTip("Show point")
+        showpoint.triggered.connect(self.PlotSpecificAreaDialog)
+        
         sep = QAction(self)
         sep.setSeparator(True)
         
@@ -634,6 +687,7 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
+        toolbar.addAction(showpoint)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QtCore.QSize(24,24))
@@ -677,7 +731,7 @@ class MainWindow(QMainWindow):
         self.checkUseSRTM.setChecked(False)
         vBox2.addWidget(self.checkUseSRTM)
         
-        # Choose processing method
+        # Choose processing method + use/don't use acceleration
         hBoxProcessingMethod = QHBoxLayout()
         labelProcessingMethod = QLabel('Processing method')
         hBoxProcessingMethod.addWidget(labelProcessingMethod)
@@ -686,12 +740,10 @@ class MainWindow(QMainWindow):
         self.comboBoxProcessingMethod.addItem("Fill all gaps at T=1s (resample)")
         self.comboBoxProcessingMethod.addItem("Fill only smaller gaps at T=1s")
         hBoxProcessingMethod.addWidget(self.comboBoxProcessingMethod)
-        vBox2.addLayout(hBoxProcessingMethod)
-        
-        # Use/don't use acceleration
-        self.checkUseAcceleration = QCheckBox("Use acceleration in Kalman filter")
+        self.checkUseAcceleration = QCheckBox("Use acceleration")
         self.checkUseAcceleration.setChecked(False)
-        vBox2.addWidget(self.checkUseAcceleration)
+        hBoxProcessingMethod.addWidget(self.checkUseAcceleration)
+        vBox2.addLayout(hBoxProcessingMethod)
         
         # Use/don't use variance smooth
         self.checkExtraSmooth = QCheckBox("Extra smooth")
@@ -699,7 +751,7 @@ class MainWindow(QMainWindow):
         vBox2.addWidget(self.checkExtraSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed")
+        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed on 2D map")
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
