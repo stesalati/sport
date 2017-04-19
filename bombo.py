@@ -1034,7 +1034,7 @@ http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation
 http://www.earthpoint.us/Convert.aspx
 http://pyastronomy.readthedocs.io/en/latest/pyaslDoc/aslDoc/coordinates.html
 """
-def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False, verbose=False):
+def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1.0, plot=False, verbose=False):
     
     def SRTMTile(lat, lon):
         xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
@@ -1102,7 +1102,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
                     gdal_merge_command_list.append(filename)
                     if not os.path.isfile(filename):
                         warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
-                        return
+                        return None, None, warnings
             if verbose:
                 print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
             gm.main(gdal_merge_command_list)
@@ -1113,7 +1113,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
         filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
         if not os.path.isfile(filename):
             warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
-            return
+            return None, None, warnings
     
     # Read SRTM GeoTiff elevation file 
     ds = gdal.Open(filename)
@@ -1144,6 +1144,9 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
     
     # Read elevation data
     zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
+    
+    # Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
+    zone_ele[zone_ele < 418] = 0
     
     # Create X,Y coordinates for zone_ele array (contains Z in meters)
     line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+zone_x_size)*gt[1], gt[1])[0:zone_x_size]
