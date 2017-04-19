@@ -10,10 +10,11 @@ os.environ['QT_API'] = 'pyqt'
 os.environ['ETS_TOOLKIT'] = 'qt4'
 
 from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
-                             QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSizePolicy, QTabWidget,
-                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
-                             QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog)
+                            QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
+                            QCheckBox, QComboBox, QSizePolicy, QTabWidget,
+                            QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
+                            QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog,
+                            QLineEdit)
 from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
@@ -556,7 +557,12 @@ class MainWindow(QMainWindow):
                 
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
+                if self.check3DMapSelection.isChecked():
+                    tile_selection = 'auto'
+                else:
+                    tile_selection = self.text3DMapName.text()
                 terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
+                                                             tile_selection=tile_selection,
                                                              margin=self.spinbox3DMargin.value(),
                                                              elevation_scale=self.spinbox3DElevationScale.value())
                 self.textWarningConsole.append(warnings)
@@ -569,7 +575,12 @@ class MainWindow(QMainWindow):
     def PlotSpecificAreaDialog(self):
         
         def PlotSpecificArea():
+            if self.check3DMapSelection.isChecked():
+                tile_selection = 'auto'
+            else:
+                tile_selection = self.text3DMapName.text()
             terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLat.value()], [self.spinboxLon.value()],
+                                                          tile_selection=tile_selection,
                                                           margin=self.spinbox3DMargin.value(),
                                                           elevation_scale=self.spinbox3DElevationScale.value())
             self.textWarningConsole.append(warnings)
@@ -758,6 +769,16 @@ class MainWindow(QMainWindow):
         # Settings for the 3D map
         label3DViewSettings = QLabel('3D view settings')
         vBox2.addWidget(label3DViewSettings)
+        
+        hBox3DMapSelection = QHBoxLayout()
+        self.check3DMapSelection = QCheckBox("Select tiles automatically, otherwise")
+        self.check3DMapSelection.setChecked(True)
+        hBox3DMapSelection.addWidget(self.check3DMapSelection)
+        self.text3DMapName = QLineEdit()
+        self.text3DMapName.setText("Iceland.tif")
+        hBox3DMapSelection.addWidget(self.text3DMapName)
+        vBox2.addLayout(hBox3DMapSelection)
+        
         hBox3D = QHBoxLayout()
         label3DMargin = QLabel('Margin')
         hBox3D.addWidget(label3DMargin)
