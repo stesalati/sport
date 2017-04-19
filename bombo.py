@@ -72,7 +72,7 @@ TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 #==============================================================================
 def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug_plot):    
     HTML_FILENAME = "osm_kalman.html"
-    infos = ""
+    dinfos = {}
     
     orig_measurements = coords[['lat','lon','ele']].values
     if method == 0:
@@ -82,7 +82,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         """
         # Create the "measurement" array
         measurements = coords[['lat','lon','ele']].values
-        infos = infos + "Number of samples: {}\n".format(len(measurements))
+        dinfos['nsamples'] = "{}".format(len(measurements))
         # This is not necessary here, I just add it so "measurements" is always a masked array,
         # regardless of the method used
         # measurements = np.ma.masked_invalid(measurements)
@@ -95,7 +95,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         coords = coords.resample('1S').asfreq()
         # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
-        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)\n".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        dinfos['nsamples'] = "{} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
         measurements = np.ma.masked_invalid(measurements)
         
     elif method == 2:
@@ -120,7 +120,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
         coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
         # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
-        infos = infos + "Number of samples: {} --> {} (+{:.0f}%)\n".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
+        dinfos['nsamples'] = "{} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
         measurements = np.ma.masked_invalid(measurements)
         
     # Setup the Kalman filter & smoother
@@ -297,7 +297,7 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
             # On Windows
             webbrowser.open(HTML_FILENAME, new=2)
             
-    return coords, measurements, state_means, state_vars, infos
+    return coords, measurements, state_means, state_vars, dinfos
 
 def ComputeDistance(state_means):
     # Horizontal distance
@@ -353,11 +353,12 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     new_gpx.tracks[0].segments[0].points[-1].speed = 0.
     new_gpx.add_missing_speeds()
     
-    infos = "STATS AFTER FILTERING\n"
-    infos = infos + GiveStats(new_gpx.tracks[0].segments[0])
-    infos = infos + GiveMyStats(state_means)
+    # Compute stats
+    tmp_dinfos1 =  GiveStats(new_gpx.tracks[0].segments[0])
+    tmp_dinfos2 =  GiveMyStats(state_means)
+    dinfos = MergeDictionaries(tmp_dinfos1, tmp_dinfos2)
     
-    return new_coords, new_gpx, infos
+    return new_coords, new_gpx, dinfos
 
 def PlotElevation(ax, measurements, state_means):
     # Compute distance
@@ -619,9 +620,9 @@ def LoadGPX(filename):
     id_longest_track = 0
     id_longest_segment = 0
     length_longest_segment = 0
-    infos = ""
+    text = ""
     for itra, track in enumerate(gpx.tracks):
-        infos = infos + "Track {}\n".format(itra)
+        text = text + "Track {}\n".format(itra)
         # Check if this is the track with more segments
         Nsegments = len(track.segments) if len(track.segments)>Nsegments else Nsegments
         for iseg, segment in enumerate(track.segments):
@@ -631,9 +632,9 @@ def LoadGPX(filename):
                 id_longest_track = itra
                 id_longest_segment = iseg
             info = segment.get_moving_data()
-            infos = infos + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m\n".format(iseg, info[0]/60., info[2])
+            text = text + "  Segment {} >>> time: {:.2f}min, distance: {:.0f}m\n".format(iseg, info[0]/60., info[2])
     
-    return gpx, (id_longest_track, id_longest_segment), len(gpx.tracks), Nsegments, infos
+    return gpx, (id_longest_track, id_longest_segment), len(gpx.tracks), Nsegments, text
 
 def SelectOneTrackAndSegmentFromGPX(igpx, chosentrack, chosensegment):
     # Create a brand new gpx structure containing only the specified segment
@@ -663,7 +664,6 @@ def MergeAllTracksAndSegmentsFromGPX(igpx):
     return ogpx
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
-    infos = "" #"Loading track[{}] >>> segment [{}]\n".format(track_nr, segment_nr)
     segment = gpx.tracks[track_nr].segments[segment_nr]
     coords = pd.DataFrame([
             {'idx': i,
@@ -675,12 +675,11 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
-    infos = infos + "STATS BASED ON THE GPX FILE\n"
-    infos = infos + GiveStats(segment)
+    dinfos = GiveStats(segment)
+    warnings = ""
     
     # https://github.com/tkrajina/srtm.py
     if use_srtm_elevation:
-        infos = infos + ("\n")
         try:
             # Delete elevation data (it's already saved in coords)
             for p in gpx.tracks[0].segments[0].points:
@@ -690,13 +689,9 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
             elevation_data = srtm.get_data()
             elevation_data.add_elevations(gpx, smooth=True)
             coords['srtm'] = [p.elevation for p in gpx.tracks[0].segments[0].points]
-            coords[['ele','srtm']].plot(title='Elevation')
-            
-            infos = infos + "SRTM elevation correction done.\n"
-            infos = infos + "\nSTATS BASED ON THE GPX FILE AFTER SRTM CORRECTION\n"
-            infos = infos + GiveStats(gpx.tracks[0].segments[0])               
+            coords[['ele','srtm']].plot(title='Elevation')  
         except:
-            infos = infos + "SRTM correction failed for some reason, probably a shitty proxy.\n"
+            warnings = "SRTM correction failed for some reason, probably a shitty proxy.\n"
     
     # Round sampling points at 1s. The error introduced should be negligible
     # the processing would be simplified
@@ -707,7 +702,7 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     gpx.add_missing_speeds()
     coords['speed'] = [p.speed for p in gpx.tracks[track_nr].segments[segment_nr].points]
     
-    return gpx, coords, infos
+    return gpx, coords, dinfos, warnings
 
 def HaversineDistance(lat_deg, lon_deg):
     # http://www.movable-type.co.uk/scripts/latlong.html
@@ -734,30 +729,40 @@ def HaversineDistanceBetweenTwoPoints(lat1, lon1, lat2, lon2):
     return d
     
 def GiveStats(segment):
+    dinfos = {}
     info = segment.get_moving_data()
     m, s = divmod(info[0], 60)
     h, m = divmod(m, 60)
-    infos = "Total distance: {:.3f}km\n".format((info[2]+info[3])/1000)
-    infos = infos + "  Moving time: {:2.0f}:{:2.0f}:{:2.0f}, distance: {:.3f}km\n".format(h, m, s, info[2]/1000.)
+    dinfos['total_distance'] = "{:.3f}km".format((info[2]+info[3])/1000.0)
+    dinfos['moving_time'] = "{:2.0f}:{:2.0f}:{:2.0f}".format(h, m, s)
+    dinfos['moving_distance'] = "{:.3f}km".format(info[2]/1000.0)
     m, s = divmod(info[1], 60)
     h, m = divmod(m, 60)
-    infos = infos + "  Idle time: {:2.0f}:{:2.0f}:{:2.0f}, distance: {:.3f}km\n".format(h, m, s, info[3]/1000.)
+    dinfos['idle_time'] = "{:2.0f}:{:2.0f}:{:2.0f}".format(h, m, s)
+    dinfos['idle_distance'] = "{:.3f}km".format(info[3]/1000.0)
     
     info = segment.get_elevation_extremes()
-    infos = infos + "Elevation: {:.0f}m <-> {:.0f}m\n".format(info[0], info[1])
+    dinfos['elevation'] = "{:.0f}m <-> {:.0f}m".format(info[0], info[1])
     
     info = segment.get_uphill_downhill()
-    infos = infos + "Climb: +{:.0f}m, -{:.0f}m\n".format(info[0], info[1])
+    dinfos['climb'] = "+{:.0f}m, -{:.0f}m".format(info[0], info[1])
     
-    return infos
+    return dinfos
 
 def GiveMyStats(state_means):
-    infos = "Total distance *: {:.3f}km\n".format(ComputeDistance(state_means)[-1]/1000)
+    dinfos = {}
+    dinfos['total_distance_my'] = "{:.3f}km".format(ComputeDistance(state_means)[-1]/1000.0)
     delevation = np.diff(np.asarray(state_means[:,2]))
-    infos = infos + "Climb *: +{:.0f}m, {:.0f}m\n".format(np.sum(delevation[np.where(delevation > 0)]), 
-                                                                      np.sum(delevation[np.where(delevation < 0)]))
-    return infos
-    
+    dinfos['climb_my'] = "+{:.0f}m, {:.0f}m\n".format(np.sum(delevation[np.where(delevation > 0)]), 
+                                                      np.sum(delevation[np.where(delevation < 0)]))
+    return dinfos
+
+def MergeDictionaries(x, y):
+    """Given two dicts, merge them into a new dict as a shallow copy."""
+    z = x.copy()
+    z.update(y)
+    return z
+
 def FindQuadrant(deg):
     n = np.zeros(len(deg))
     n[np.where((deg >= 0) & (deg < 90) )] = 1
@@ -1049,6 +1054,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
     
     earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
     px2deg = 0.0008333333333333334
+    warnings = ""
     
     # If track_lat and track_lon are None, run a demo
     if len(track_lat) == 0 and len(track_lon) == 0:
@@ -1095,7 +1101,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
                     filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
                     gdal_merge_command_list.append(filename)
                     if not os.path.isfile(filename):
-                        print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+                        warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                         return
             if verbose:
                 print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
@@ -1106,7 +1112,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
         tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
         filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
         if not os.path.isfile(filename):
-            print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.".format(tilename, TILES_DOWNLOAD_LINK)
+            warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
             return
     
     # Read SRTM GeoTiff elevation file 
@@ -1163,7 +1169,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
       (x,y) = degrees2meters(track_lon[i], track_lat[i])
       track_x_m.append(x)
       track_y_m.append(y)
-      zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
+      zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))] * elevation_scale
       track_z_m.append(zz)
     
     if plot:
@@ -1196,7 +1202,7 @@ def PlotOnMap3D(track_lat, track_lon, margin=100, elevation_scale=1, plot=False,
              'line_width': 10.0,
              'tube_radius': TRACE_SIZE_ON_3DMAP}
 
-    return terrain, track
+    return terrain, track, warnings
 
 
 """
