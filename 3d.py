@@ -8,11 +8,11 @@ from osgeo import gdal, osr
 import math
 import os
 import sys
+import bombo as bombo
 
 #sys.path.append('C:/Users/salatis/AppData/Local/Continuum/Anaconda2/Scripts')
 #sys.path.append('~/anaconda/bin/')
 import gdal_merge as gm
-
 
 TRACE_SIZE_ON_3DMAP = 200.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
@@ -31,6 +31,7 @@ verbose=True
 ACTUAL FUNCTION UNDER TEST
 """
 
+"""
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
     ytile = int(np.trunc((60 - lat) / (360/72) + 1))
@@ -206,3 +207,4 @@ track = {'x': track_x_m,
          'color': (255.0/255.0, 102.0/255.0, 0),
          'line_width': 10.0,
          'tube_radius': TRACE_SIZE_ON_3DMAP}
+"""
