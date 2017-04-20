@@ -10,6 +10,7 @@ from scipy import signal, fftpack
 import matplotlib.pyplot as plt
 from matplotlib import patches
 # from matplotlib.pyplot import ion, show
+import re
 import gpxpy
 import datetime
 import mplleaflet
@@ -1169,6 +1170,10 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     for x, y in np.ndindex(array_x_deg.shape):
       array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
     
+    if verbose:
+        print "\nPlotted area size:"
+        print "X: {}, Y: {}".format(np.size(zone_ele.transpose(), axis=0), np.size(zone_ele.transpose(), axis=1))
+    
     # Display 3D surface
     if plot:
         mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
@@ -1216,6 +1221,32 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
 
     return terrain, track, warnings
 
+# http://en.proft.me/2015/09/20/converting-latitude-and-longitude-decimal-values-p/
+# https://glenbambrick.com/2015/06/24/dd-to-dms/
+def dms2dd(degrees, minutes, seconds, direction):
+    dd = degrees + minutes/60 + seconds/(60*60);
+    if direction == 'S' or direction == 'W':
+        dd *= -1
+    return dd;
+
+def dd2dms(deg):
+    d = int(deg)
+    md = abs(deg - d) * 60
+    m = int(md)
+    sd = (md - m) * 60
+    return [d, m, sd]
+
+def parse_dms(dms):
+    parts = re.split('[^\d\w]+', dms)
+    if len(parts) == 8:
+        # Seconds are without decimals
+        lat = dms2dd(parts[0], parts[1], parts[2], parts[3])
+        lng = dms2dd(parts[4], parts[5], parts[6], parts[7])
+    if len(parts) == 10:    
+        # Seconds are with decimals
+        lat = dms2dd(float(parts[0]), float(parts[1]), float(parts[2]) + float(parts[3])/(10**(np.trunc(np.log10(float(parts[3]))+1))), parts[4])
+        lng = dms2dd(float(parts[5]), float(parts[6]), float(parts[7]) + float(parts[8])/(10**(np.trunc(np.log10(float(parts[8]))+1))), parts[9])
+    return (lat, lng)
 
 """
 Homemade processing
