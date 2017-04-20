@@ -4,6 +4,11 @@
 @author: Stefano Salati
 @mail: stef.salati@gmail.com
 """
+"""
+TODO
+- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto
+- Capire perché la conversione non funziona con le coordinate del monte matto che ho trovato da qualche parte...
+"""
 
 import os
 os.environ['QT_API'] = 'pyqt'
@@ -14,7 +19,7 @@ from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                             QCheckBox, QComboBox, QSizePolicy, QTabWidget,
                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
                             QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog,
-                            QLineEdit)
+                            QLineEdit, QFrame, QGridLayout)
 from qtpy import QtGui, QtCore
 import numpy as np
 import matplotlib.pyplot as plt
@@ -575,11 +580,23 @@ class MainWindow(QMainWindow):
     def PlotSpecificAreaDialog(self):
         
         def PlotSpecificArea():
+            # Save coordinates for the next time
+            if os.environ['QT_API'] == 'pyqt':
+                self.settings.setValue("last_point_coord_lat", self.spinboxLatDec.value())
+                self.settings.setValue("last_point_coord_lon", self.spinboxLonDec.value())
+            elif os.environ['QT_API'] == 'pyqt5':
+                self.settings.setValue("last_point_coord_lat", QtCore.QVariant(self.spinboxLatDec.value()))
+                self.settings.setValue("last_point_coord_lon", QtCore.QVariant(self.spinboxLonDec.value()))
+            
+            # Select the 3D tab
+            self.tab.setCurrentIndex(1)
+            
+            # Plot
             if self.check3DMapSelection.isChecked():
                 tile_selection = 'auto'
             else:
                 tile_selection = self.text3DMapName.text()
-            terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLat.value()], [self.spinboxLon.value()],
+            terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
                                                           tile_selection=tile_selection,
                                                           margin=self.spinbox3DMargin.value(),
                                                           elevation_scale=self.spinbox3DElevationScale.value())
@@ -587,40 +604,60 @@ class MainWindow(QMainWindow):
             if terrain is not None:    
                 self.map3d.update_plot(terrain, track)
             d.done(0)
-        
+            
+        def Convert():
+            try:
+                dd = bombo.parse_dms(self.textLatLonGMS.text())
+                self.spinboxLatDec.setValue(dd[0])
+                self.spinboxLonDec.setValue(dd[1])
+            except:
+                pass
+            
         d = QDialog()
+        grid = QGridLayout()
+
+        hBox_coordsGMS = QHBoxLayout()
+        hBox_coordsGMS.setSpacing(5)
+        label = QLabel('Coordinates (gms)')
+        grid.addWidget(label, 0, 0)
+        self.textLatLonGMS = QLineEdit()
+        self.textLatLonGMS.setText("")
+        grid.addWidget(self.textLatLonGMS, 0, 1, 1, 2)
         
-        hBox = QHBoxLayout()
-        hBox.setSpacing(5)
+        button1 = QPushButton("Convert to decimal")
+        button1.clicked.connect(Convert)
+        grid.addWidget(button1, 0, 3)
         
-        hBox_coords = QHBoxLayout()
-        hBox_coords.setSpacing(5)
+        label = QLabel('Coordinates (decimal)')
+        grid.addWidget(label, 1, 0)
+        self.spinboxLatDec = QDoubleSpinBox()
+        self.spinboxLatDec.setRange(-90,+90)
+        self.spinboxLatDec.setSingleStep(0.0000001)
+        self.spinboxLatDec.setDecimals(7)
+        grid.addWidget(self.spinboxLatDec, 1, 1)
+        self.spinboxLonDec = QDoubleSpinBox()
+        self.spinboxLonDec.setRange(-180,+180)
+        self.spinboxLonDec.setSingleStep(0.0000001)
+        self.spinboxLonDec.setDecimals(7)
+        grid.addWidget(self.spinboxLonDec, 1, 2)
         
-        label = QLabel('Coordinates')
-        hBox_coords.addWidget(label)
+        # Try to recover the last used points
+        try:
+            old_lat = self.settings.value("last_point_coord_lat", type=float)
+            old_lon = self.settings.value("last_point_coord_lon", type=float)
+            self.spinboxLatDec.setValue(old_lat)
+            self.spinboxLonDec.setValue(old_lon)
+        except:
+            # Coordinates of Mt. Rinjani in Indonesia
+            self.spinboxLatDec.setValue(-8.4166000)
+            self.spinboxLonDec.setValue(116.4666000)
         
-        self.spinboxLat = QDoubleSpinBox()
-        self.spinboxLat.setRange(-90,+90)
-        self.spinboxLat.setSingleStep(0.0000001)
-        self.spinboxLat.setDecimals(7)
-        self.spinboxLat.setValue(-8.4166000)
-        hBox_coords.addWidget(self.spinboxLat)
-        
-        self.spinboxLon = QDoubleSpinBox()
-        self.spinboxLon.setRange(-180,+180)
-        self.spinboxLon.setSingleStep(0.0000001)
-        self.spinboxLon.setDecimals(7)
-        self.spinboxLon.setValue(116.4666000)
-        hBox_coords.addWidget(self.spinboxLon)
-        
-        hBox.addLayout(hBox_coords)
-        
-        button = QPushButton("Show 3D map")
-        button.clicked.connect(PlotSpecificArea)
-        hBox.addWidget(button)
+        button2 = QPushButton("Show 3D map")
+        button2.clicked.connect(PlotSpecificArea)
+        grid.addWidget(button2, 1, 3)
 
         d.setWindowTitle("Show point on 3D map")
-        d.setLayout(hBox)
+        d.setLayout(grid)
         d.setWindowModality(QtCore.Qt.ApplicationModal)
         d.exec_()
         
@@ -681,7 +718,7 @@ class MainWindow(QMainWindow):
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
-        showpoint = QAction(QtGui.QIcon("icons/go.png"), "Show point", self)
+        showpoint = QAction(QtGui.QIcon("icons/point.png"), "Show point", self)
         showpoint.setShortcut("Ctrl+P")
         showpoint.setStatusTip("Show point")
         showpoint.triggered.connect(self.PlotSpecificAreaDialog)
@@ -702,12 +739,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QtCore.QSize(24,24))
-        
-        # Menu bar
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('&What do you wanna do?')
-        fileMenu.addAction(openfile)
-        
+                
         # Status bar
         self.statusBar().show()
         
@@ -765,6 +797,12 @@ class MainWindow(QMainWindow):
         self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed on 2D map")
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
+        
+        line = QFrame()
+        #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(line)
         
         # Settings for the 3D map
         label3DViewSettings = QLabel('3D view settings')
@@ -831,7 +869,7 @@ class MainWindow(QMainWindow):
         hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
-        tab = QTabWidget()
+        self.tab = QTabWidget()
         
         # Tab 1: Summary: elevation and speed
         tab1 = QWidget()
@@ -910,13 +948,13 @@ class MainWindow(QMainWindow):
         tab4.setLayout(vBox_right)
         
         # Associate tabs
-        tab.addTab(tab1, "Summary")
-        tab.addTab(tab5, "3D")
-        tab.addTab(tab2, "Coordinates and variance")
-        tab.addTab(tab3, "Elevation and variance")
-        tab.addTab(tab4, "Speed and variance")
+        self.tab.addTab(tab1, "Summary")
+        self.tab.addTab(tab5, "3D")
+        self.tab.addTab(tab2, "Coordinates and variance")
+        self.tab.addTab(tab3, "Elevation and variance")
+        self.tab.addTab(tab4, "Speed and variance")
         
-        hBox.addWidget(tab)
+        hBox.addWidget(self.tab)
         
         # Setting hBox as main box
         self.scatola.setLayout(hBox)
