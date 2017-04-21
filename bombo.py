@@ -1055,6 +1055,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     
     earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
     px2deg = 0.0008333333333333334
+    textsize = margin * 10
     warnings = ""
     
     # If track_lat and track_lon are None, run a demo
@@ -1168,15 +1169,17 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     
     array_x_m = np.empty_like(array_x_deg)
     for x, y in np.ndindex(array_x_deg.shape):
-      array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
+        array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
+    
+    zone_ele = zone_ele.transpose()
     
     if verbose:
         print "\nPlotted area size:"
-        print "X: {}, Y: {}".format(np.size(zone_ele.transpose(), axis=0), np.size(zone_ele.transpose(), axis=1))
+        print "X: {}, Y: {}".format(np.size(zone_ele, axis=0), np.size(zone_ele, axis=1))
     
     # Display 3D surface
     if plot:
-        mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
+        mlab.mesh(array_x_m, array_y_m, zone_ele * elevation_scale)
     
     # Hiking path
     track_x_m = list()
@@ -1186,7 +1189,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
       (x,y) = degrees2meters(track_lon[i], track_lat[i])
       track_x_m.append(x)
       track_y_m.append(y)
-      zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))] * elevation_scale
+      zz = zone_ele[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))] * elevation_scale
       track_z_m.append(zz)
     
     if plot:
@@ -1194,6 +1197,8 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
         # Display path as line
         mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+        mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(zone_ele), "NORTH", scale=(textsize, textsize, textsize))
+        mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
         
     if plot:
         # Set camera position
@@ -1211,13 +1216,14 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     # Creating the export dictionary
     terrain = {'x': array_x_m, 
                'y': array_y_m,
-               'z': zone_ele.transpose() * elevation_scale}
+               'z': zone_ele * elevation_scale}
     track = {'x': track_x_m,
              'y': track_y_m,
              'z': track_z_m,
              'color': (255.0/255.0, 102.0/255.0, 0),
              'line_width': 10.0,
-             'tube_radius': TRACE_SIZE_ON_3DMAP}
+             'tube_radius': TRACE_SIZE_ON_3DMAP,
+             'textsize': textsize}
 
     return terrain, track, warnings
 
