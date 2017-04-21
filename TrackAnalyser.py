@@ -77,7 +77,6 @@ http://matplotlib.org/users/annotations.html
 """
 
 FONTSIZE = 8
-PLOT_FONTSIZE = 9
 
 class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
