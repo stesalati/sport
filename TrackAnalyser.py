@@ -6,8 +6,7 @@
 """
 """
 TODO
-- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto
-- Capire perché la conversione non funziona con le coordinate del monte matto che ho trovato da qualche parte...
+- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto. Prospettiva strana...
 """
 
 import os
@@ -786,6 +785,7 @@ class MainWindow(QMainWindow):
         self.treemodel.setHorizontalHeaderLabels(['Name', 'Value'])
         self.tree.setModel(self.treemodel)
         self.tree.setUniformRowHeights(True)
+        self.tree.setColumnWidth(0, 200)
         
         #index = self.treemodel.indexFromItem(parent1)
         #self.tree.expand(index)
