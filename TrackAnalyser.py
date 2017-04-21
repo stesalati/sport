@@ -4,30 +4,22 @@
 @author: Stefano Salati
 @mail: stef.salati@gmail.com
 """
-
-# COMMENTS ABOUT THE EMBEDDING OF MAYAVI IN PYQT
-# By default, the PySide binding will be used. If you want the PyQt bindings
-# to be used, you need to set the QT_API environment variable to 'pyqt'
-#os.environ['QT_API'] = 'pyqt'
-
-# To be able to use PySide or PyQt4 and not run in conflicts with traits,
-# we need to import QtGui and QtCore from pyface.qt
-#from pyface.qt import QtGui, QtCore
-# Alternatively, you can bypass this line, but you need to make sure that
-# the following lines are executed before the import of PyQT:
-#   import sip
-#   sip.setapi('QString', 2)
+"""
+TODO
+- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto. Prospettiva strana...
+"""
 
 import os
 os.environ['QT_API'] = 'pyqt'
-
 os.environ['ETS_TOOLKIT'] = 'qt4'
 
 from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
-                             QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
-                             QCheckBox, QComboBox, QSizePolicy, QTabWidget,
-                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView)
-from qtpy import QtGui, QtCore
+                            QLabel, QFileDialog, QHBoxLayout, QVBoxLayout, QTextEdit,
+                            QCheckBox, QComboBox, QSizePolicy, QTabWidget,
+                            QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
+                            QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog,
+                            QLineEdit, QFrame, QGridLayout)
+from qtpy import QtGui, QtCore, QtWebEngineWidgets
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -45,20 +37,24 @@ from matplotlib.widgets import MultiCursor
 import platform
 import ctypes
 import sys
+import sip
 
-
+# Comments for mayavi integration in pyqt (I ignored them and it works nevertheless)
+# To be able to use PySide or PyQt4 and not run in conflicts with traits,
+# we need to import QtGui and QtCore from pyface.qt
+#from pyface.qt import QtGui, QtCore
+# Alternatively, you can bypass this line, but you need to make sure that
+# the following lines are executed before the import of PyQT:
+#   import sip
+#   sip.setapi('QString', 2)
 from traits.api import HasTraits, Instance, on_trait_change
 from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
-
-
 import bombo as bombo
-
 
 """
 DOCUMENTATION
-
 PyQt4
 http://www.python.it/wiki/show/qttutorial/
 http://zetcode.com/gui/pyqt4/menusandtoolbars/
@@ -81,7 +77,6 @@ http://matplotlib.org/users/annotations.html
 """
 
 FONTSIZE = 8
-PLOT_FONTSIZE = 9
 
 class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
@@ -180,11 +175,18 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.fig.set_tight_layout(True)
         self.draw()
         
-class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
+        
+class EmbeddedPlot_Details(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.top_axis = self.fig.add_subplot(211)
-        self.bottom_axis = self.fig.add_subplot(212)#, sharex=self.top_axis)
+        
+        self.axis_coords = self.fig.add_subplot(231)
+        self.axis_elevation = self.fig.add_subplot(232)
+        self.axis_speed = self.fig.add_subplot(233, sharex=self.axis_elevation)
+        self.axis_coords_variance = self.fig.add_subplot(234, sharex=self.axis_elevation)
+        self.axis_elevation_variance = self.fig.add_subplot(235, sharex=self.axis_elevation)
+        self.axis_speed_variance = self.fig.add_subplot(236, sharex=self.axis_elevation)
+        
         self.fig.set_facecolor("w")
         self.fig.set_tight_layout(True)
         FigureCanvas.__init__(self, self.fig)
@@ -198,111 +200,44 @@ class EmbeddedPlot_CoordinatesVariance(FigureCanvas):
         FigureCanvas.setFocus(self)
         
     def clear_figure(self):
-        self.top_axis.cla()
-        self.bottom_axis.cla()
+        self.axis_coords.cla()
+        self.axis_elevation.cla()
+        self.axis_speed.cla()
+        self.axis_coords_variance.cla()
+        self.axis_elevation_variance.cla()
+        self.axis_speed_variance.cla()
         
-    def update_figure(self, measurements, state_means, state_vars):
+    def update_figure(self, measurements, state_means, state_vars, segment):
         # Draw plots
-        self.top_axis, tmp_coords = bombo.PlotCoordinates(self.top_axis, state_means)
-        self.bottom_axis, tmp_coordsvar = bombo.PlotCoordinatesVariance(self.bottom_axis, state_means, state_vars)
+        self.axis_coords, tmp_coords = bombo.PlotCoordinates(self.axis_coords, state_means)
+        self.axis_elevation, tmp_ele = bombo.PlotElevation(self.axis_elevation, measurements, state_means)
+        self.axis_speed, tmp_speed = bombo.PlotSpeed(self.axis_speed, segment)
+        self.axis_coords_variance, tmp_coordsvar = bombo.PlotCoordinatesVariance(self.axis_coords_variance, state_means, state_vars)
+        self.axis_elevation_variance, tmp_elevar = bombo.PlotElevationVariance(self.axis_elevation_variance, state_means, state_vars)
+        self.axis_speed_variance, tmp_speedvar = bombo.PlotSpeedVariance(self.axis_speed_variance, state_means, state_vars)
+        
         # Add cursor
-        """
         def onclick(event):
-            cursor_anchored.mouse_move(event)
+            cursor_anchored2.mouse_move(event)
+            cursor_anchored3.mouse_move(event)
             self.draw()
         if platform.system() == "Darwin":
             # Cursor on both plots but not linked to the trace
-            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
+            self.multi = MultiCursor(self.fig.canvas,
+                                     (self.axis_elevation, self.axis_speed, self.axis_coords_variance, self.axis_elevation_variance, self.axis_speed_variance),
+                                     color='r', lw=1, vertOn=True, horizOn=True)
         elif platform.system() == 'Windows':
-            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
-                                                       self.bottom_axis, tmp_speed[0], tmp_speed[1])
+            cursor_anchored2 = MultiCursorLinkedToTrace(self.axis_elevation, tmp_ele[0], tmp_ele[1],
+                                                        self.axis_elevation_variance, tmp_elevar[0], tmp_elevar[1])
+            cursor_anchored3 = MultiCursorLinkedToTrace(self.axis_speed, tmp_speed[0], tmp_speed[1],
+                                                        self.axis_speed_variance, tmp_speedvar[0], tmp_speedvar[1])
             self.mpl_connect('motion_notify_event', onclick)
-        """
+            
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
 
-class EmbeddedPlot_ElevationVariance(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.top_axis = self.fig.add_subplot(211)
-        self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
-        self.fig.set_facecolor("w")
-        self.fig.set_tight_layout(True)
-        FigureCanvas.__init__(self, self.fig)
-        self.setParent(parent)
-        FigureCanvas.setSizePolicy(self,
-                                   QSizePolicy.Expanding,
-                                   QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
-        FigureCanvas.setFocusPolicy(self,
-                                    QtCore.Qt.StrongFocus)
-        FigureCanvas.setFocus(self)
-        
-    def clear_figure(self):
-        self.top_axis.cla()
-        self.bottom_axis.cla()
-        
-    def update_figure(self, measurements, state_means, state_vars):
-        # Draw plots
-        self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
-        self.bottom_axis, tmp_elevar = bombo.PlotElevationVariance(self.bottom_axis, state_means, state_vars)
-        # Add cursor
-        def onclick(event):
-            cursor_anchored.mouse_move(event)
-            self.draw()
-        if platform.system() == "Darwin":
-            # Cursor on both plots but not linked to the trace
-            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
-        elif platform.system() == 'Windows':
-            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
-                                                       self.bottom_axis, tmp_elevar[0], tmp_elevar[1])
-            self.mpl_connect('motion_notify_event', onclick)
-        # Draw
-        self.fig.set_tight_layout(True)
-        self.draw()
-        
-class EmbeddedPlot_SpeedVariance(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.top_axis = self.fig.add_subplot(211)
-        self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
-        self.fig.set_facecolor("w")
-        self.fig.set_tight_layout(True)
-        FigureCanvas.__init__(self, self.fig)
-        self.setParent(parent)
-        FigureCanvas.setSizePolicy(self,
-                                   QSizePolicy.Expanding,
-                                   QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
-        FigureCanvas.setFocusPolicy(self,
-                                    QtCore.Qt.StrongFocus)
-        FigureCanvas.setFocus(self)
-        
-    def clear_figure(self):
-        self.top_axis.cla()
-        self.bottom_axis.cla()
-        
-    def update_figure(self, measurements, state_means, state_vars, segment):
-        # Draw plots
-        self.top_axis, tmp_speed = bombo.PlotSpeed(self.top_axis, segment)
-        self.bottom_axis, tmp_speedvar = bombo.PlotSpeedVariance(self.bottom_axis, state_means, state_vars)
-        # Add cursor
-        def onclick(event):
-            cursor_anchored.mouse_move(event)
-            self.draw()
-        if platform.system() == "Darwin":
-            # Cursor on both plots but not linked to the trace
-            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
-        elif platform.system() == 'Windows':
-            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_speed[0], tmp_speed[1],
-                                                       self.bottom_axis, tmp_speedvar[0], tmp_speedvar[1])
-            self.mpl_connect('motion_notify_event', onclick)
-        # Draw
-        self.fig.set_tight_layout(True)
-        self.draw()
-        
-        
+
 class MayaviQWidget(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
@@ -339,7 +274,14 @@ class Visualization(HasTraits):
         # self.scene.mlab.test_points3d()
         
         # Here's were I embedded my code
+        self.scene.mlab.clf()
         self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
+        self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0])/2, terrain['y'][0][0], np.max(terrain['z']) + 100,
+                               "NORTH", scale=(track['textsize'], track['textsize'], track['textsize']))
+        """
+        self.scene.mlab.text3d(track['x'][0], track['y'][0], track['z'][0] + 100,
+                               "START", scale=(track['textsize'], track['textsize'], track['textsize']))
+        """
         self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
                                color=track['color'],
                                line_width=track['line_width'],
@@ -446,35 +388,61 @@ class MainWindow(QMainWindow):
             self.proc_state_vars = []
             self.proc_new_coords = []
             self.proc_new_gpx = []
-            self.proc_infos = []
             self.proc_coords_to_plot = []
             self.proc_coords_to_plot2 = []
             self.proc_balloondata = []
             
             # For every GPX file that is selected
-            self.textOutput.setText("")
+            self.textWarningConsole.clear()
             for i, currentgpx in enumerate(self.gpxselectedlist):
-                self.textOutput.append("**** {} ****\n".format(self.gpxselectednamelist[i]))
-                
                 # Parse the GPX file
-                gpx, coords, infos = bombo.ParseGPX(currentgpx,
-                                                    track_nr=0,
-                                                    segment_nr=0,
-                                                    use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
-                self.textOutput.append(infos)
+                gpx, coords, dinfos_before, warnings = bombo.ParseGPX(currentgpx,
+                                                                      track_nr=0,
+                                                                      segment_nr=0,
+                                                                      use_srtm_elevation=bool(self.checkUseSRTM.isChecked()))
+                self.textWarningConsole.append(warnings)
                 
                 # Kalman processing
-                coords, measurements, state_means, state_vars, infos = bombo.ApplyKalmanFilter(coords,
-                                                                                               gpx,
-                                                                                               method=self.comboBoxProcessingMethod.currentIndex(), 
-                                                                                               use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                               extra_smooth=self.checkExtraSmooth.isChecked(),
-                                                                                               debug_plot=False)
-                self.textOutput.append(infos)
+                coords, measurements, state_means, state_vars, dinfos_during = bombo.ApplyKalmanFilter(coords,
+                                                                                                       gpx,
+                                                                                                       method=self.comboBoxProcessingMethod.currentIndex(), 
+                                                                                                       use_acceleration=self.checkUseAcceleration.isChecked(),
+                                                                                                       extra_smooth=self.checkExtraSmooth.isChecked(),
+                                                                                                       debug_plot=False)
                 
                 # Save data in GPX structure to compute speed and elevations
-                new_coords, new_gpx, infos = bombo.SaveDataToCoordsAndGPX(coords, state_means)
-                self.textOutput.append(infos)
+                new_coords, new_gpx, dinfos_after = bombo.SaveDataToCoordsAndGPX(coords, state_means)
+                
+                # Update GUI with the computed stats               
+                parent = QtGui.QStandardItem(self.gpxselectednamelist[i])
+                
+                parent_beforeprocessing = QtGui.QStandardItem("Raw GPX stats")
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Total distance"), QtGui.QStandardItem(dinfos_before['total_distance'])])
+                parent_beforeprocessing_moving = QtGui.QStandardItem("Moving")
+                parent_beforeprocessing_moving.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_before['moving_time'])])
+                parent_beforeprocessing_moving.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_before['moving_distance'])])
+                parent_beforeprocessing.appendRow(parent_beforeprocessing_moving)
+                parent_beforeprocessing_idle = QtGui.QStandardItem("Idle")
+                parent_beforeprocessing_idle.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_before['idle_time'])])
+                parent_beforeprocessing_idle.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_before['idle_distance'])])
+                parent_beforeprocessing.appendRow(parent_beforeprocessing_idle)
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Elevation"), QtGui.QStandardItem(dinfos_before['elevation'])])
+                parent_beforeprocessing.appendRow([QtGui.QStandardItem("Climb"), QtGui.QStandardItem(dinfos_before['climb'])])
+                parent.appendRow(parent_beforeprocessing)
+                
+                parent.appendRow([QtGui.QStandardItem("Samples"), QtGui.QStandardItem(dinfos_during['nsamples'])])
+                parent.appendRow([QtGui.QStandardItem("Total distance"), QtGui.QStandardItem(dinfos_after['total_distance'])])
+                parent_moving = QtGui.QStandardItem("Moving")
+                parent_moving.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_after['moving_time'])])
+                parent_moving.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_after['moving_distance'])])
+                parent.appendRow(parent_moving)
+                parent_idle = QtGui.QStandardItem("Idle")
+                parent_idle.appendRow([QtGui.QStandardItem("Time"), QtGui.QStandardItem(dinfos_after['idle_time'])])
+                parent_idle.appendRow([QtGui.QStandardItem("Distance"), QtGui.QStandardItem(dinfos_after['idle_distance'])])
+                parent.appendRow(parent_idle)
+                parent.appendRow([QtGui.QStandardItem("Elevation"), QtGui.QStandardItem(dinfos_after['elevation'])])
+                parent.appendRow([QtGui.QStandardItem("Climb"), QtGui.QStandardItem(dinfos_after['climb'])])
+                self.treemodel.appendRow(parent)
         
                 # Create balloondata for the html plot
                 balloondata = {'distance': np.cumsum(bombo.HaversineDistance(np.asarray(new_coords['lat']), np.asarray(new_coords['lon']))),
@@ -491,14 +459,13 @@ class MainWindow(QMainWindow):
                                'palette': ('blue','red')}
                 """
                 
-                # Saverelevant output in global variables
+                # Save relevant output in global variables
                 self.proc_coords.append(coords)
                 self.proc_measurements.append(measurements)
                 self.proc_state_means.append(state_means)
                 self.proc_state_vars.append(state_vars)
                 self.proc_new_coords.append(new_coords)
                 self.proc_new_gpx.append(new_gpx)
-                self.proc_infos.append(infos)
                 self.proc_coords_to_plot.append(np.vstack((new_coords['lat'], new_coords['lon'])).T)
                 self.proc_coords_to_plot2.append(np.vstack((coords['lat'], coords['lon'])).T)
                 self.proc_balloondata.append(balloondata)
@@ -509,17 +476,13 @@ class MainWindow(QMainWindow):
             
             # Generate embedded plots
             if len(self.gpxselectedlist) == 1:
-                self.plotEmbedded1.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
-                self.plotEmbedded2.update_figure(measurements, state_means, state_vars)
-                self.plotEmbedded3.update_figure(measurements, state_means, state_vars)
-                self.plotEmbedded4.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+                self.plotEmbeddedElevationAndSpeed.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
+                self.plotEmbeddedDetails.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
             else:
                 # Commentato per adesso
-                # self.plotEmbedded1.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx)
-                self.plotEmbedded1.clear_figure()
-                self.plotEmbedded2.clear_figure()
-                self.plotEmbedded3.clear_figure()
-                self.plotEmbedded4.clear_figure()
+                # self.plotEmbeddedElevationAndSpeed.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx)
+                self.plotEmbeddedElevationAndSpeed.clear_figure()
+                self.plotEmbeddedDetails.clear_figure()
             
             # Generate html plot
             # If only one track is selected, proceed with the complete output, otherwise just plot the traces
@@ -540,14 +503,105 @@ class MainWindow(QMainWindow):
                 
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
-                terrain, track = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'])
-                self.map3d.update_plot(terrain, track)
-            
-                
+                if self.check3DMapSelection.isChecked():
+                    tile_selection = 'auto'
+                else:
+                    tile_selection = self.text3DMapName.text()
+                terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
+                                                             tile_selection=tile_selection,
+                                                             margin=self.spinbox3DMargin.value(),
+                                                             elevation_scale=self.spinbox3DElevationScale.value())
+                self.textWarningConsole.append(warnings)
+                if terrain is not None:    
+                    self.map3d.update_plot(terrain, track)
         else:
-            self.textOutput.setText("You need to open a .gpx file before!")
+            self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
+    
+    def PlotSpecificAreaDialog(self):
+        
+        def PlotSpecificArea():
+            # Save coordinates for the next time
+            if os.environ['QT_API'] == 'pyqt':
+                self.settings.setValue("last_point_coord_lat", self.spinboxLatDec.value())
+                self.settings.setValue("last_point_coord_lon", self.spinboxLonDec.value())
+            elif os.environ['QT_API'] == 'pyqt5':
+                self.settings.setValue("last_point_coord_lat", QtCore.QVariant(self.spinboxLatDec.value()))
+                self.settings.setValue("last_point_coord_lon", QtCore.QVariant(self.spinboxLonDec.value()))
+            
+            # Select the 3D tab
+            self.tab.setCurrentIndex(1)
+            
+            # Plot
+            if self.check3DMapSelection.isChecked():
+                tile_selection = 'auto'
+            else:
+                tile_selection = self.text3DMapName.text()
+            terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
+                                                          tile_selection=tile_selection,
+                                                          margin=self.spinbox3DMargin.value(),
+                                                          elevation_scale=self.spinbox3DElevationScale.value())
+            self.textWarningConsole.append(warnings)
+            if terrain is not None:    
+                self.map3d.update_plot(terrain, track)
+            d.done(0)
+            
+        def Convert():
+            try:
+                dd = bombo.parse_dms(self.textLatLonGMS.text())
+                self.spinboxLatDec.setValue(dd[0])
+                self.spinboxLonDec.setValue(dd[1])
+            except:
+                pass
+            
+        d = QDialog()
+        grid = QGridLayout()
 
+        hBox_coordsGMS = QHBoxLayout()
+        hBox_coordsGMS.setSpacing(5)
+        label = QLabel('Coordinates (gms)')
+        grid.addWidget(label, 0, 0)
+        self.textLatLonGMS = QLineEdit()
+        self.textLatLonGMS.setText("")
+        grid.addWidget(self.textLatLonGMS, 0, 1, 1, 2)
+        
+        button1 = QPushButton("Convert to decimal")
+        button1.clicked.connect(Convert)
+        grid.addWidget(button1, 0, 3)
+        
+        label = QLabel('Coordinates (decimal)')
+        grid.addWidget(label, 1, 0)
+        self.spinboxLatDec = QDoubleSpinBox()
+        self.spinboxLatDec.setRange(-90,+90)
+        self.spinboxLatDec.setSingleStep(0.0000001)
+        self.spinboxLatDec.setDecimals(7)
+        grid.addWidget(self.spinboxLatDec, 1, 1)
+        self.spinboxLonDec = QDoubleSpinBox()
+        self.spinboxLonDec.setRange(-180,+180)
+        self.spinboxLonDec.setSingleStep(0.0000001)
+        self.spinboxLonDec.setDecimals(7)
+        grid.addWidget(self.spinboxLonDec, 1, 2)
+        
+        # Try to recover the last used points
+        try:
+            old_lat = self.settings.value("last_point_coord_lat", type=float)
+            old_lon = self.settings.value("last_point_coord_lon", type=float)
+            self.spinboxLatDec.setValue(old_lat)
+            self.spinboxLonDec.setValue(old_lon)
+        except:
+            # Coordinates of Mt. Rinjani in Indonesia
+            self.spinboxLatDec.setValue(-8.4166000)
+            self.spinboxLonDec.setValue(116.4666000)
+        
+        button2 = QPushButton("Show 3D map")
+        button2.clicked.connect(PlotSpecificArea)
+        grid.addWidget(button2, 1, 3)
+
+        d.setWindowTitle("Show point on 3D map")
+        d.setLayout(grid)
+        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        d.exec_()
+        
     def __init__(self, parent=None):
         super(MainWindow, self).__init__()
         self.initVariables()
@@ -568,7 +622,6 @@ class MainWindow(QMainWindow):
         self.proc_state_vars = list()
         self.proc_new_coords = list()
         self.proc_new_gpx = list()
-        self.proc_infos = list()
         self.proc_coords_to_plot = list()
         self.proc_coords_to_plot2 = list()
         self.proc_balloondata = list()
@@ -606,6 +659,11 @@ class MainWindow(QMainWindow):
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
+        showpoint = QAction(QtGui.QIcon("icons/point.png"), "Show point", self)
+        showpoint.setShortcut("Ctrl+P")
+        showpoint.setStatusTip("Show point")
+        showpoint.triggered.connect(self.PlotSpecificAreaDialog)
+        
         sep = QAction(self)
         sep.setSeparator(True)
         
@@ -618,15 +676,11 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
+        toolbar.addAction(showpoint)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(48,48))
-        
-        # Menu bar
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('&What do you wanna do?')
-        fileMenu.addAction(openfile)
-        
+        toolbar.setIconSize(QtCore.QSize(24,24))
+                
         # Status bar
         self.statusBar().show()
         
@@ -646,6 +700,7 @@ class MainWindow(QMainWindow):
         vBox_left.addWidget(self.tracklist)
         self.tracklist.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tracklist.itemSelectionChanged.connect(selection_changed)
+        self.tracklist.setMaximumHeight(120)
         
         # 2nd vertical box, containing several horizontal boxes, one for each setting
         vBox2 = QVBoxLayout()
@@ -660,7 +715,7 @@ class MainWindow(QMainWindow):
         self.checkUseSRTM.setChecked(False)
         vBox2.addWidget(self.checkUseSRTM)
         
-        # Choose processing method
+        # Choose processing method + use/don't use acceleration
         hBoxProcessingMethod = QHBoxLayout()
         labelProcessingMethod = QLabel('Processing method')
         hBoxProcessingMethod.addWidget(labelProcessingMethod)
@@ -669,12 +724,10 @@ class MainWindow(QMainWindow):
         self.comboBoxProcessingMethod.addItem("Fill all gaps at T=1s (resample)")
         self.comboBoxProcessingMethod.addItem("Fill only smaller gaps at T=1s")
         hBoxProcessingMethod.addWidget(self.comboBoxProcessingMethod)
-        vBox2.addLayout(hBoxProcessingMethod)
-        
-        # Use/don't use acceleration
-        self.checkUseAcceleration = QCheckBox("Use acceleration in Kalman filter")
+        self.checkUseAcceleration = QCheckBox("Use acceleration")
         self.checkUseAcceleration.setChecked(False)
-        vBox2.addWidget(self.checkUseAcceleration)
+        hBoxProcessingMethod.addWidget(self.checkUseAcceleration)
+        vBox2.addLayout(hBoxProcessingMethod)
         
         # Use/don't use variance smooth
         self.checkExtraSmooth = QCheckBox("Extra smooth")
@@ -682,115 +735,151 @@ class MainWindow(QMainWindow):
         vBox2.addWidget(self.checkExtraSmooth)
         
         # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed")
+        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed on 2D map")
         self.checkUseRDP.setChecked(False)
         vBox2.addWidget(self.checkUseRDP)
         
+        line = QFrame()
+        #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(line)
+        
+        # Settings for the 3D map
+        label3DViewSettings = QLabel('3D view settings')
+        vBox2.addWidget(label3DViewSettings)
+        
+        hBox3DMapSelection = QHBoxLayout()
+        self.check3DMapSelection = QCheckBox("Select tiles automatically, otherwise")
+        self.check3DMapSelection.setChecked(True)
+        hBox3DMapSelection.addWidget(self.check3DMapSelection)
+        self.text3DMapName = QLineEdit()
+        self.text3DMapName.setText("Iceland.tif")
+        hBox3DMapSelection.addWidget(self.text3DMapName)
+        vBox2.addLayout(hBox3DMapSelection)
+        
+        hBox3D = QHBoxLayout()
+        label3DMargin = QLabel('Margin')
+        hBox3D.addWidget(label3DMargin)
+        self.spinbox3DMargin = QSpinBox()
+        self.spinbox3DMargin.setRange(50,1000)
+        self.spinbox3DMargin.setSingleStep(10)
+        hBox3D.addWidget(self.spinbox3DMargin)
+        labelSpace = QLabel('  ')
+        hBox3D.addWidget(labelSpace)
+        label3DElevationScale = QLabel('Elevation scale')
+        hBox3D.addWidget(label3DElevationScale)
+        self.spinbox3DElevationScale = QDoubleSpinBox()
+        self.spinbox3DElevationScale.setRange(1,50)
+        self.spinbox3DElevationScale.setSingleStep(0.1)
+        hBox3D.addWidget(self.spinbox3DElevationScale)
+        vBox2.addLayout(hBox3D)
+        
         vBox_left.addLayout(vBox2)
-                
-        # 3rd text, containing the processing output
-        self.textOutput = QTextEdit()
-        self.textOutput.setReadOnly(True)
-        self.textOutput.setFont(QtGui.QFont("Courier New", FONTSIZE))
-        self.textOutput.clear()
-        vBox_left.addWidget(self.textOutput)
+        
+        # 3rd stats tree
+        self.tree = QTreeView()
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.treemodel = QtGui.QStandardItemModel()
+        self.treemodel.setHorizontalHeaderLabels(['Name', 'Value'])
+        self.tree.setModel(self.treemodel)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setColumnWidth(0, 200)
+        
+        #index = self.treemodel.indexFromItem(parent1)
+        #self.tree.expand(index)
+        #selmod = self.tree.selectionModel()
+        #index2 = self.treemodel.indexFromItem(child2)
+        #selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
+        vBox_left.addWidget(self.tree)
+        
+        # 4th text, containing text messages/errors
+        self.textWarningConsole = QTextEdit()
+        self.textWarningConsole.setReadOnly(True)
+        self.textWarningConsole.setFont(QtGui.QFont("Courier New", FONTSIZE))
+        self.textWarningConsole.clear()
+        self.textWarningConsole.setMaximumHeight(50)
+        vBox_left.addWidget(self.textWarningConsole)
         
         # I put "vBox_left" inside a widget and then the widget inside "hBox"
         # instead of just doing "hBox.addLayout(vBox_left) so I can set its
         # maximum width.
         vBox_left_widget = QWidget()
         vBox_left_widget.setLayout(vBox_left)
-        vBox_left_widget.setMinimumWidth(300)
-        vBox_left_widget.setMaximumWidth(400)
+        vBox_left_widget.setMinimumWidth(400)
+        vBox_left_widget.setMaximumWidth(500)
         hBox.addWidget(vBox_left_widget)
         
         # Vertical right column
-        tab = QTabWidget()
+        self.tab = QTabWidget()
         
         # Tab 1: Summary: elevation and speed
         tab1 = QWidget()
         # The tab layout
-        vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(5)
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
         # Plot area
-        self.plotEmbedded1 = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100)
-        self.plotEmbedded1.setMinimumWidth(800)
+        self.plotEmbeddedElevationAndSpeed = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100)
+        self.plotEmbeddedElevationAndSpeed.setMinimumWidth(800)
         # Add toolbar to the plot
-        self.mpl_toolbar1 = NavigationToolbar(self.plotEmbedded1, self.scatola)
+        self.mpl_toolbar1 = NavigationToolbar(self.plotEmbeddedElevationAndSpeed, self.scatola)
         # Add widgets to the layout
-        vBox_right.addWidget(self.plotEmbedded1)
-        vBox_right.addWidget(self.mpl_toolbar1)
+        vBox_tab.addWidget(self.plotEmbeddedElevationAndSpeed)
+        vBox_tab.addWidget(self.mpl_toolbar1)
         # Associate the layout to the tab
-        tab1.setLayout(vBox_right)
+        tab1.setLayout(vBox_tab)
         
-        # Tab 5: 3D plot
-        tab5 = QWidget()
+        # Tab 2: 3D plot
+        tab2 = QWidget()
         # The tab layout
-        vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(5)
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
         # Area
         self.map3d = MayaviQWidget()
         # Add widgets to the layout
-        vBox_right.addWidget(self.map3d)
+        vBox_tab.addWidget(self.map3d)
         # Associate the layout to the tab
-        tab5.setLayout(vBox_right)
+        tab2.setLayout(vBox_tab)
         
-        # Tab 2: Coordinates and variance
-        tab2 = QWidget()
-        # The tab layout
-        vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(5)
-        # Plot area
-        self.plotEmbedded2 = EmbeddedPlot_CoordinatesVariance(width=5, height=4, dpi=100)
-        self.plotEmbedded2.setMinimumWidth(800)
-        # Add toolbar to the plot
-        self.mpl_toolbar2 = NavigationToolbar(self.plotEmbedded2, self.scatola)
-        # Add widgets to the layout
-        vBox_right.addWidget(self.plotEmbedded2)
-        vBox_right.addWidget(self.mpl_toolbar2)
-        # Associate the layout to the tab
-        tab2.setLayout(vBox_right)
-        
-        # Tab 3: Elevation and variance
-        tab3 = QWidget()
-        # The tab layout
-        vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(5)
-        # Plot area
-        self.plotEmbedded3 = EmbeddedPlot_ElevationVariance(width=5, height=4, dpi=100)
-        self.plotEmbedded3.setMinimumWidth(800)
-        # Add toolbar to the plot
-        self.mpl_toolbar3 = NavigationToolbar(self.plotEmbedded3, self.scatola)
-        # Add widgets to the layout
-        vBox_right.addWidget(self.plotEmbedded3)
-        vBox_right.addWidget(self.mpl_toolbar3)
-        # Associate the layout to the tab
-        tab3.setLayout(vBox_right)
-        
-        # Tab 4: Speed and variance
+        """
+        # Tab 4: html 2D map
         tab4 = QWidget()
         # The tab layout
-        vBox_right = QVBoxLayout()
-        vBox_right.setSpacing(5)
-        # Plot area
-        self.plotEmbedded4 = EmbeddedPlot_SpeedVariance(width=5, height=4, dpi=100)
-        self.plotEmbedded4.setMinimumWidth(800)
-        # Add toolbar to the plot
-        self.mpl_toolbar4 = NavigationToolbar(self.plotEmbedded4, self.scatola)
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
+        # Area
+        self.browser = QtWebEngineWidgets.QWebEngineView()
+        self.browser.load(QtCore.QUrl("osm.html"))
+        self.browser.show()
         # Add widgets to the layout
-        vBox_right.addWidget(self.plotEmbedded4)
-        vBox_right.addWidget(self.mpl_toolbar4)
+        vBox_tab.addWidget(self.browser)
         # Associate the layout to the tab
-        tab4.setLayout(vBox_right)
+        tab4.setLayout(vBox_tab)
+        """
         
+        # Tab 3: Details
+        tab3 = QWidget()
+        # The tab layout
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
+        # Plot area
+        self.plotEmbeddedDetails = EmbeddedPlot_Details(width=5, height=4, dpi=100)
+        self.plotEmbeddedDetails.setMinimumWidth(800)
+        # Add toolbar to the plot
+        self.mpl_toolbar2 = NavigationToolbar(self.plotEmbeddedDetails, self.scatola)
+        # Add widgets to the layout
+        vBox_tab.addWidget(self.plotEmbeddedDetails)
+        vBox_tab.addWidget(self.mpl_toolbar2)
+        # Associate the layout to the tab
+        tab3.setLayout(vBox_tab)
+                
         # Associate tabs
-        tab.addTab(tab1, "Summary")
-        tab.addTab(tab5, "3D")
-        tab.addTab(tab2, "Coordinates and variance")
-        tab.addTab(tab3, "Elevation and variance")
-        tab.addTab(tab4, "Speed and variance")
+        self.tab.addTab(tab1, "Summary")
+        self.tab.addTab(tab2, "3D")
+        # self.tab.addTab(tab6, "Map")
+        self.tab.addTab(tab3, "Details")
         
-        hBox.addWidget(tab)
+        hBox.addWidget(self.tab)
         
         # Setting hBox as main box
         self.scatola.setLayout(hBox)
@@ -803,20 +892,33 @@ class MainWindow(QMainWindow):
         self.show()
 
 
-# Creating the application
-app = QApplication(sys.argv)
-main = MainWindow()
+def main():
+    # Creating the application
+    app = 0
+    app = QApplication(sys.argv)
+    main = MainWindow()
+    app.setActiveWindow(main)
+    
+    # Showing the right icon in the taskbar
+    if platform.system() == "Darwin":
+        # On MAC
+        pass
+    elif platform.system() == 'Windows':
+        # On Windows
+        myappid = 'Ste.Sport.TrackAnalyser.v0.1' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    
+    main.show()
+    
+    # I added this line to rpevent the app from crashing on exit. The app was
+    # closing fine when I was using pyqt4 and pyqt5 but started crashing when
+    # I started using qtpy. This makes me think that my code is fine but
+    # the way qtpy is implemented causes random behaviours on exit. After
+    # trying different suggestions, this is the only one that works:
+    sip.setdestroyonexit(False)
+    
+    sys.exit(app.exec_())
+    #app.closeAllWindows()
 
-# Showing the right icon in the taskbar
-if platform.system() == "Darwin":
-    # On MAC
-    pass
-elif platform.system() == 'Windows':
-    # On Windows
-    myappid = 'Ste.Sport.TrackAnalyser.v0.1' # arbitrary string
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
-main.show()
-sys.exit(app.exec_())
-# Alternative:
-# app.exec_()
+if __name__ == "__main__":
+    main()
