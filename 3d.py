@@ -21,8 +21,8 @@ TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 track_lat = None
 track_lon = None
 tile_selection = 'auto'
-tile_selection = 'iceland.tif'
-margin=500
+# tile_selection = 'iceland.tif'
+margin=20
 elevation_scale=1
 plot=True
 verbose=True
@@ -31,7 +31,6 @@ verbose=True
 ACTUAL FUNCTION UNDER TEST
 """
 
-"""
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
     ytile = int(np.trunc((60 - lat) / (360/72) + 1))
@@ -51,12 +50,14 @@ def degrees2meters(longitude, latitude):
 earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
 px2deg = 0.0008333333333333334
 
+textsize = margin * 10
+
 # If track_lat and track_lon are None, run a demo
 if track_lat == track_lon == None:
     # startingpoint = (44.1938472, 10.7012833)    # Cimone
     # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
-    # startingpoint = (-8.4166000, 116.4666000)   # Rinjani
-    startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
+    startingpoint = (-8.4166000, 116.4666000)   # Rinjani
+    # startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
     R = 0.01
     track_lat1 = np.linspace(-R, R, 1000).transpose()
     track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
@@ -161,11 +162,13 @@ array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
 
 array_x_m = np.empty_like(array_x_deg)
 for x, y in np.ndindex(array_x_deg.shape):
-  array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
+    array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
+
+zone_ele = zone_ele.transpose()
 
 # Display 3D surface
 if plot:
-    mlab.mesh(array_x_m, array_y_m, zone_ele.transpose() * elevation_scale)
+    mlab.mesh(array_x_m, array_y_m, zone_ele * elevation_scale)
 
 # Hiking path
 track_x_m = list()
@@ -175,7 +178,7 @@ for i in range(np.size(track_lat, axis=0)):
   (x,y) = degrees2meters(track_lon[i], track_lat[i])
   track_x_m.append(x)
   track_y_m.append(y)
-  zz = zone_ele.transpose()[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
+  zz = zone_ele[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
   track_z_m.append(zz)
 
 if plot:
@@ -183,6 +186,9 @@ if plot:
     # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
     # Display path as line
     mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+    
+mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(zone_ele), "NORTH", scale=(textsize, textsize, textsize))
+mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
     
 if plot:
     # Set camera position
@@ -200,11 +206,10 @@ if plot:
 # Creating the export dictionary
 terrain = {'x': array_x_m, 
            'y': array_y_m,
-           'z': zone_ele.transpose() * elevation_scale}
+           'z': zone_ele * elevation_scale}
 track = {'x': track_x_m,
          'y': track_y_m,
          'z': track_z_m,
          'color': (255.0/255.0, 102.0/255.0, 0),
          'line_width': 10.0,
          'tube_radius': TRACE_SIZE_ON_3DMAP}
-"""
