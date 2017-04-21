@@ -25,20 +25,25 @@ import gdal_merge as gm
 TRACE_SIZE_ON_3DMAP = 200.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
-USE_PROXY = True
+USE_PROXY = False
 PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
 track_lat = None
 track_lon = None
 tile_selection = 'auto'
 # tile_selection = 'iceland.tif'
-margin=20
+margin=200
 elevation_scale=1
 plot=True
 verbose=True
 
 
 
+
+
+"""
+ACTUAL FUNCTION UNDER TEST
+"""
 
 
 def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
@@ -117,112 +122,6 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
                 tile = None
                 
     return Cluster, tiles_edges_coords
-
-
-"""
-def MapInteractivePlot(fig, s, h, dh, lat, lon, zoom_level, margin_percentage, use_proxy, proxy_data, verbose):
-    fig.subplots_adjust(hspace=0.1, wspace=0.1)
-    gs = gridspec.GridSpec(1, 3, width_ratios=[5, 0.001, 5])
-    ax0 = plt.subplot(gs[0])
-    ax1 = plt.subplot(gs[1])
-    ax2 = plt.subplot(gs[2])
-    X = np.vstack((s, h[0:-1], lon[0:-1], lat[0:-1]))
-    
-    # Elevation over distance
-    points = ax0.plot(X[0], X[1], color = '0.5')
-    points = ax0.scatter(X[0], X[1], s=4)
-    ax0.set_ylabel("Elevation (m)")
-    ax0.set_xlabel("Distance (m)")
-    ax0.grid(True)
-    ax0.set_xlim(np.min(s), np.max(s))
-    ax0.set_ylim(0, np.max(h) + 100)
-    
-    # Total ascent/descent
-    #at = AnchoredText("Total ascent. %dm\nTotal descent: %dm" % (TotalAscentDescent(dh_filtered, 1), TotalAscentDescent(dh_filtered, -1)),
-    #                  prop=dict(size=12), frameon=True,
-    #                  loc=2,
-    #                  )
-    #at.patch.set_boxstyle("round,pad=0.,rounding_size=0.2")
-    #ax1.add_artist(at)
-    
-    # Fake subplot
-    points = ax1.scatter(X[0], X[2])
-    ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    ax1.yaxis.set_major_formatter(plt.NullFormatter())
-    
-    # Map with route
-    margin = np.max((np.max(lat) - np.min(lat), np.max(lon) - np.min(lon))) * margin_percentage
-    lat_origin = np.min(lat) - margin
-    lon_origin = np.min(lon) - margin
-    lat_span = np.max(lat) - np.min(lat) + 2 * margin
-    lon_span = np.max(lon) - np.min(lon) + 2 * margin
-"""             
-                     
-                     
-                     
-                     
-                     
-                     
-                     
-                     
-
-fig, ax = mpld3.subplots()           
-                 
-                 
-a, tiles_edges_coords = GetMapImageCluster(use_proxy=True, proxy_data=PROXY_DATA,
-                                           lat_deg=45.0, lon_deg=10.0,
-                                           delta_lat=0.1, delta_long=0.1,
-                                           zoom=15,
-                                           verbose=True)
-img = np.asarray(a)
-scipy.misc.imsave('caccola.jpg', img)
-# Extent simply associates values, in this case longitude and latitude, to
-#	the map's corners.
-ax.imshow(img, extent=[tiles_edges_coords[2], tiles_edges_coords[3], tiles_edges_coords[0], tiles_edges_coords[1]], zorder=0, origin="lower")
-
-#points = ax2.scatter(X[2], X[3], s=4)
-ax.set_xlim(10.0, 10.0 + 0.1)
-ax.set_ylim(45.0, 45.0 + 0.1)    
-ax.set_xlabel("Lat")
-ax.set_ylabel("Lon")
-ax.grid(True)
-mpld3.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-ACTUAL FUNCTION UNDER TEST
-"""
 
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
@@ -343,7 +242,7 @@ if verbose:
 zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
 
 # Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
-zone_ele[zone_ele < 418] = 0
+zone_ele[zone_ele < -418] = 0
 
 # Create X,Y coordinates for zone_ele array (contains Z in meters)
 line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+zone_x_size)*gt[1], gt[1])[0:zone_x_size]
@@ -365,8 +264,42 @@ if plot:
                      color=(1, 1, 1))
     
     
+    if True:
+        a, tiles_edges_coords = GetMapImageCluster(use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                                                   lat_deg=lat_min, lon_deg=lon_min,
+                                                   delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
+                                                   zoom=13,
+                                                   verbose=True)
     
-    image_file = 'texture2.jpg'
+        a = a.rotate(180)
+        
+        # Adesso c'è da trimmare la texture in modo tale che corrisponda come coordinate a quello che c'è sotto.
+    
+        
+        
+        #a.crop()
+        img = np.asarray(a)
+        img = np.transpose(img, axes=(1, 0, 2))
+        scipy.misc.imsave('texture.jpg', img)
+        
+        
+        
+        
+        # Extent simply associates values, in this case longitude and latitude, to
+        #	the map's corners.
+        fig, ax = mpld3.subplots() 
+        ax.imshow(img, extent=[tiles_edges_coords[2], tiles_edges_coords[3], tiles_edges_coords[0], tiles_edges_coords[1]], zorder=0, origin="lower")
+        ax.set_xlim(10.0, 10.0 + 0.1)
+        ax.set_ylim(45.0, 45.0 + 0.1)    
+        ax.set_xlabel("Lat")
+        ax.set_ylabel("Lon")
+        ax.grid(True)
+        mpld3.show()
+    
+    
+    
+    
+    image_file = 'texture.jpg'
     textureReader = vtk.vtkJPEGReader()
     textureReader.SetFileName(image_file)
     texture = vtk.vtkTexture()
@@ -408,6 +341,7 @@ mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsi
     
 if plot:
     # Set camera position
+    """
     mlab.view(azimuth=-90.0,
               elevation=60.0,
               # distance=1.0,
@@ -415,6 +349,7 @@ if plot:
               # focalpoint=(1000.0, 1000.0, 1000.0),
               focalpoint='auto',
               roll=0.0)
+    """
     
     # Show the 3D map
     mlab.show()
