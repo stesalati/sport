@@ -449,8 +449,10 @@ def PlotSpeed(ax, gpx_segment):
     #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
     ax.plot(distance, coords['speed']*3.6, color="r", linestyle="-", marker="None")
     # Style
-    ax.set_xlabel("Distance (m)")
-    ax.set_ylabel("Speed (km/h)")
+    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Speed (km/h)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
     ax.grid(True)
     # Legend
     #l = ax.legend(['Measured', 'Estimated'])
