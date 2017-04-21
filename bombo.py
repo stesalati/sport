@@ -1246,12 +1246,19 @@ def parse_dms(dms):
     parts = re.split('[^\d\w]+', dms)
     if len(parts) == 8:
         # Seconds are without decimals
-        lat = dms2dd(parts[0], parts[1], parts[2], parts[3])
-        lng = dms2dd(parts[4], parts[5], parts[6], parts[7])
-    if len(parts) == 10:    
-        # Seconds are with decimals
-        lat = dms2dd(float(parts[0]), float(parts[1]), float(parts[2]) + float(parts[3])/(10**(np.trunc(np.log10(float(parts[3]))+1))), parts[4])
-        lng = dms2dd(float(parts[5]), float(parts[6]), float(parts[7]) + float(parts[8])/(10**(np.trunc(np.log10(float(parts[8]))+1))), parts[9])
+        lat = dms2dd(float(parts[0]), float(parts[1]), float(parts[2]), parts[3])
+        lng = dms2dd(float(parts[4]), float(parts[5]), float(parts[6]), parts[7])
+    if len(parts) == 10:
+        # Seconds are with decimals, distinguish if they're 0 or actually meaningful
+        if float(parts[3]) > 0:
+            lat = dms2dd(float(parts[0]), float(parts[1]), float(parts[2]) + float(parts[3])/(10**(np.trunc(np.log10(float(parts[3]))+1))), parts[4])
+        else:
+            lat = dms2dd(float(parts[0]), float(parts[1]), float(parts[2]), parts[4])
+            
+        if float(parts[8]) > 0:
+            lng = dms2dd(float(parts[5]), float(parts[6]), float(parts[7]) + float(parts[8])/(10**(np.trunc(np.log10(float(parts[8]))+1))), parts[9])
+        else:
+            lng = dms2dd(float(parts[5]), float(parts[6]), float(parts[7]), parts[9])
     return (lat, lng)
 
 """
