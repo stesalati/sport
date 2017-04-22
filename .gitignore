@@ -11,22 +11,8 @@
 *.pyc
 
 # Elevation data folder
-elevationdata/*.*
-
-*.tif
-
-*.hdr
-
-*.tfw
-
-elevationdata/srtm_39_04/readme.txt
-
-elevationdata/srtm_39_03/readme.txt
-
-elevationdata/srtm_38_02/readme.txt
-
-elevationdata/srtm_37_02/readme.txt
-
-elevationdata/srtm_38_03/readme.txt
-
-elevationdata/srtm_38_04/readme.txt
+elevationdata/*/*.txt
+elevationdata/*/*.hdr
+elevationdata/*/*.tfw
+elevationdata/*/*.tif
+elevationdata/*.tif
