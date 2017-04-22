@@ -10,6 +10,7 @@ import sys
 import vtk
 import StringIO
 from PIL import Image
+import PIL
 #from mpld3 import plugins, utils
 import urllib2, urllib
 from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
@@ -32,9 +33,10 @@ track_lat = None
 track_lon = None
 tile_selection = 'auto'
 # tile_selection = 'iceland.tif'
-margin=200
+margin=300
 elevation_scale=1
 plot=True
+use_osm_texture = True
 verbose=True
 
 
@@ -81,7 +83,7 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
     xmin, ymax = MapTilesDeg2Num(lat_deg, lon_deg, zoom)
     xmax, ymin = MapTilesDeg2Num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
     if verbose:
-        print "Tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
+        print "OSM tiles %d - %d (horizontally) and %d - %d (vertically) are needed\n" % (xmin, xmax, ymin, ymax)
     
     # Margin coordinates of the tiles that were downloaded (adding 1 to the max
     # tiles as apparently the coordinates returned by MapTilesNum2Deg refer to
@@ -92,10 +94,14 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
     lat_max_actual = np.max((lat_min, lat_max))
     lon_min_actual = np.min((lon_min, lon_max))
     lon_max_actual = np.max((lon_min, lon_max))
-    tiles_edges_coords = (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
+    osm_tiles_edges = {"lat_min": lat_min_actual,
+                       "lat_max": lat_max_actual,
+                       "lon_min": lon_min_actual,
+                       "lon_max": lon_max_actual}
     if verbose:
-        print "User requested area >>>>>>>>>>>>> lat: %f - %f, lon: %f - %f" % (lat_deg, lat_deg + delta_lat, lon_deg, lon_deg + delta_long)
-        print "Returned area (must be wider) >>> lat: %f - %f, lon: %f - %f" % (lat_min_actual, lat_max_actual, lon_min_actual, lon_max_actual)
+        print "\nOSM coordinate boundaries (limit <-- min -- max --> limit):"
+        print "Longitude (X): {} <-- {} -- {} --> {}".format(osm_tiles_edges['lon_min'], lon_deg, lon_deg + delta_long, osm_tiles_edges['lon_max'])
+        print "Latitude (Y):  {} <-- {} -- {} --> {}".format(osm_tiles_edges['lat_min'], lat_deg, lat_deg + delta_lat, osm_tiles_edges['lat_max'])
     
     # Populate the desired map with tiles
     Cluster = Image.new('RGB',((xmax-xmin+1)*256-1, (ymax-ymin+1)*256-1))
@@ -109,7 +115,7 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
                     # Download from the Internet and save it locally for future
                     # use
                     imgurl = smurl.format(zoom, xtile, ytile)
-                    print("Tile not found locally, have to download it from: " + imgurl)
+                    print("OSM tile not found locally, have to download it from: " + imgurl)
                     imgstr = urllib2.urlopen(imgurl).read()
                     tile = Image.open(StringIO.StringIO(imgstr))
                     with open(image_storage_path + savename.format(zoom, xtile, ytile), 'wb') as f:
@@ -118,10 +124,10 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
                 # Append it to the rest of the cluster
                 Cluster.paste(tile, box=((xtile-xmin)*256 ,  (ytile-ymin)*255))
             except: 
-                print("Tile loading (either from local repository or the Internet failed.")
+                print("OSM tile loading failed.")
                 tile = None
                 
-    return Cluster, tiles_edges_coords
+    return Cluster, osm_tiles_edges
 
 def SRTMTile(lat, lon):
     xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
@@ -138,6 +144,10 @@ def degrees2metersLatY(latitudeSpan):
 
 def degrees2meters(longitude, latitude):
   return (degrees2metersLongX(latitude, longitude), degrees2metersLatY(latitude))
+
+def find_nearest(array, value):
+    idx = (np.abs(array-value)).argmin()
+    return idx, array[idx]
 
 earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
 px2deg = 0.0008333333333333334
@@ -160,11 +170,14 @@ if track_lat == track_lon == None:
     track_lat = track_lat + startingpoint[0]
     track_lon = track_lon + startingpoint[1]
     
+    track_lat = [startingpoint[0]]
+    track_lon = [startingpoint[1]]
+    
     # Determine the coordinates of the area we are interested in
     lat_min = np.min(track_lat) - margin * px2deg
     lat_max = np.max(track_lat) + margin * px2deg
-    lon_min = np.min(track_lon) - margin * px2deg
-    lon_max = np.max(track_lon) + margin * px2deg
+    lon_min = np.min(track_lon) - margin * px2deg * 2.0 # per avere una cosa rettangolare e capire bene le direzioni
+    lon_max = np.max(track_lon) + margin * px2deg * 2.0
 
 if tile_selection == 'auto':
     # Tiles will be determined automatically
@@ -223,7 +236,7 @@ tile_lat_max = gt[3]
 tile_ele = ds.GetRasterBand(1)
 
 if verbose:
-    print "\nCoordinate boundaries:"
+    print "\nElevation coordinate boundaries (limit <-- min -- max --> limit):"
     print "Longitude (X): {} <-- {} -- {} --> {}".format(tile_lon_min, lon_min, lon_max, tile_lon_max)
     print "Latitude (Y):  {} <-- {} -- {} --> {}".format(tile_lat_min, lat_min, lat_max, tile_lat_max)
 
@@ -234,7 +247,7 @@ zone_y_min = int((lat_max - tile_lat_max)/gt[5])
 zone_y_size = int((lat_min - lat_max)/gt[5])  # Inverted min and max as tiles are numbered, vertically, from north to south 
 
 if verbose:
-    print "\nSelected zone:"
+    print "\nElevation selected zone:"
     print "Longitude (X): Start: {}, Size: {}".format(zone_x_min, zone_x_size)
     print "Latitude (Y):  Start: {}, Size: {}".format(zone_y_min, zone_y_size)
 
@@ -242,7 +255,7 @@ if verbose:
 zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
 
 # Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
-zone_ele[zone_ele < -418] = 0
+zone_ele[zone_ele < -418] = -500
 
 # Create X,Y coordinates for zone_ele array (contains Z in meters)
 line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+zone_x_size)*gt[1], gt[1])[0:zone_x_size]
@@ -264,60 +277,97 @@ if plot:
                      color=(1, 1, 1))
     
     
-    if True:
-        a, tiles_edges_coords = GetMapImageCluster(use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
-                                                   lat_deg=lat_min, lon_deg=lon_min,
-                                                   delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
-                                                   zoom=13,
-                                                   verbose=True)
+    if use_osm_texture:
+        a, osm_tiles_edges = GetMapImageCluster(use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                                                lat_deg=lat_min, lon_deg=lon_min,
+                                                delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
+                                                zoom=13,
+                                                verbose=True)
     
+        
+        # Provo a vedere se i punti corrispondono sulle due mappe
+        # Questa verifica va fatta prima di modificare l'immagine, per vedre che i punti corrispondano
+        # La mappa sembra ok
+        fig, ax = mpld3.subplots()
+        img = np.asarray(a)
+        ax.imshow(img, extent=[osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], osm_tiles_edges['lat_min'], osm_tiles_edges['lat_max']], zorder=0, origin="lower")
+        points = ax.scatter(track_lon, track_lat, s=4)
+        ax.grid(True)
+        mpld3.show()
+        
+        
+        
+        
+        
+        
+        
         a = a.rotate(180)
+        a = a.transpose(Image.TRANSPOSE)
+        #a = a.transpose(Image.FLIP_TOP_BOTTOM)
         
         # Adesso c'è da trimmare la texture in modo tale che corrisponda come coordinate a quello che c'è sotto.
-    
+        
+        print "Longitude (X): {} <-- {} -- {} --> {}".format(osm_tiles_edges['lon_min'], lon_min, lon_max, osm_tiles_edges['lon_max'])
+        print "Latitude (Y):  {} <-- {} -- {} --> {}".format(osm_tiles_edges['lat_min'], lat_min, lat_max, osm_tiles_edges['lat_max'])
         
         
-        #a.crop()
-        img = np.asarray(a)
-        img = np.transpose(img, axes=(1, 0, 2))
+        
+        height = a.size[0]
+        width = a.size[1]
+        
+        # Method 1: with vectors
+        h_coord_vector = np.linspace(osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], width)
+        h_pixel_vector = np.linspace(0, width-1, width)
+        h_min_idx, h_min_value = find_nearest(h_coord_vector, lon_min)
+        h_max_idx, h_max_value = find_nearest(h_coord_vector, lon_max)
+        
+        v_coord_vector = np.linspace(osm_tiles_edges['lat_max'], osm_tiles_edges['lat_min'], height)
+        v_pixel_vector = np.linspace(0, height-1, height)
+        v_min_idx, v_min_value = find_nearest(v_coord_vector, lat_min)
+        v_max_idx, v_max_value = find_nearest(v_coord_vector, lat_max)
+        
+        trim_margins = {'left': int(h_min_idx),
+                        'right': int(width - h_max_idx),
+                        'bottom': int(height - v_min_idx),
+                        'top': int(v_max_idx)}
+        a = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
+        
+        # Method 2: operations
+        """
+        h_deg2px_ratio = width / (osm_tiles_edges['lon_max'] - osm_tiles_edges['lon_min'])
+        v_deg2px_ratio = height / (osm_tiles_edges['lat_max'] - osm_tiles_edges['lat_min'])
+        
+        trim_margins = {'left': int(np.round((lon_min - osm_tiles_edges['lon_min']) * h_deg2px_ratio)),
+                        'right': int(np.round((osm_tiles_edges['lon_max'] - lon_max) * h_deg2px_ratio)),
+                        'bottom': int(np.round((lat_min - osm_tiles_edges['lat_min']) * v_deg2px_ratio)),
+                        'top': int(np.round((osm_tiles_edges['lon_max'] - lat_max) * v_deg2px_ratio))}
+        a = a.crop((trim_margins['left'], trim_margins['top'], width-trim_margins['right'], height-trim_margins['bottom']))
+        """
+        
+        
+        
         scipy.misc.imsave('texture.jpg', img)
         
         
         
         
-        # Extent simply associates values, in this case longitude and latitude, to
-        #	the map's corners.
-        fig, ax = mpld3.subplots() 
-        ax.imshow(img, extent=[tiles_edges_coords[2], tiles_edges_coords[3], tiles_edges_coords[0], tiles_edges_coords[1]], zorder=0, origin="lower")
-        ax.set_xlim(10.0, 10.0 + 0.1)
-        ax.set_ylim(45.0, 45.0 + 0.1)    
-        ax.set_xlabel("Lat")
-        ax.set_ylabel("Lon")
-        ax.grid(True)
-        mpld3.show()
+        #img = np.transpose(img, axes=(1, 0, 2))
+        
+        
     
     
     
-    
-    image_file = 'texture.jpg'
-    textureReader = vtk.vtkJPEGReader()
-    textureReader.SetFileName(image_file)
-    texture = vtk.vtkTexture()
-    texture.SetInputConnection(textureReader.GetOutputPort())
-    
-    
-
-    mesh.actor.actor.mapper.scalar_visibility=False
-    mesh.actor.enable_texture = True
-    mesh.actor.tcoord_generator_mode = 'plane'
-    mesh.actor.actor.texture = texture
-    
-    
-    
-    
-    
-    
-    
+        # Read and apply texture
+        image_file = 'texture.jpg'
+        textureReader = vtk.vtkJPEGReader()
+        textureReader.SetFileName(image_file)
+        texture = vtk.vtkTexture()
+        texture.SetInputConnection(textureReader.GetOutputPort())
+        
+        mesh.actor.actor.mapper.scalar_visibility=False
+        mesh.actor.enable_texture = True
+        mesh.actor.tcoord_generator_mode = 'plane'
+        mesh.actor.actor.texture = texture
     
 # Hiking path
 track_x_m = list()
@@ -332,9 +382,9 @@ for i in range(np.size(track_lat, axis=0)):
 
 if plot:
     # Display path nodes as spheres
-    # mlab.points3d(track_x_m, track_y_m, track_z_m, color=(1,0,0), mode='sphere', scale_factor=100)
+    mlab.points3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
     # Display path as line
-    mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+    # mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
     
 mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(zone_ele), "NORTH", scale=(textsize, textsize, textsize))
 mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
