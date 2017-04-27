@@ -8,6 +8,7 @@ import math
 import os
 import sys
 import vtk
+from tvtk.api import tvtk
 import StringIO
 from PIL import Image
 import PIL
@@ -83,7 +84,7 @@ def GetMapImageCluster(use_proxy, proxy_data, lat_deg, lon_deg, delta_lat, delta
     xmin, ymax = MapTilesDeg2Num(lat_deg, lon_deg, zoom)
     xmax, ymin = MapTilesDeg2Num(lat_deg + delta_lat, lon_deg + delta_long, zoom)
     if verbose:
-        print "OSM tiles %d - %d (horizontally) and %d - %d (vertically) are needed\n" % (xmin, xmax, ymin, ymax)
+        print "\nOSM tiles %d - %d (horizontally) and %d - %d (vertically) are needed" % (xmin, xmax, ymin, ymax)
     
     # Margin coordinates of the tiles that were downloaded (adding 1 to the max
     # tiles as apparently the coordinates returned by MapTilesNum2Deg refer to
@@ -158,7 +159,7 @@ textsize = margin * 10
 if track_lat == track_lon == None:
     # startingpoint = (44.1938472, 10.7012833)    # Cimone
     # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
-    startingpoint = (-8.4166000, 116.4666000)   # Rinjani
+    startingpoint = (-08.4113472, 116.4166667)   # Rinjani
     # startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
     R = 0.01
     track_lat1 = np.linspace(-R, R, 1000).transpose()
@@ -286,34 +287,36 @@ if plot:
     
         
         # Provo a vedere se i punti corrispondono sulle due mappe
-        # Questa verifica va fatta prima di modificare l'immagine, per vedre che i punti corrispondano
-        # La mappa sembra ok
+        # Questa verifica va fatta prima di modificare l'immagine, per vedere che i punti corrispondano
         fig, ax = mpld3.subplots()
         img = np.asarray(a)
-        ax.imshow(img, extent=[osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], osm_tiles_edges['lat_min'], osm_tiles_edges['lat_max']], zorder=0, origin="lower")
+        ax.imshow(img, extent=[osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], osm_tiles_edges['lat_min'], osm_tiles_edges['lat_max']], zorder=0)#, origin="lower")
         points = ax.scatter(track_lon, track_lat, s=4)
         ax.grid(True)
         mpld3.show()
+        # La mappa sembra ok
         
         
         
+        # http://geoexamples.blogspot.de/2014/02/3d-terrain-visualization-with-python.html
+        # http://www.shadedrelief.com/
         
         
         
-        
-        a = a.rotate(180)
-        a = a.transpose(Image.TRANSPOSE)
+        #a = a.rotate(180)
+        #a = a.transpose(Image.TRANSPOSE)
         #a = a.transpose(Image.FLIP_TOP_BOTTOM)
         
         # Adesso c'è da trimmare la texture in modo tale che corrisponda come coordinate a quello che c'è sotto.
         
+        print("\nHow much needs to be trimmed")
         print "Longitude (X): {} <-- {} -- {} --> {}".format(osm_tiles_edges['lon_min'], lon_min, lon_max, osm_tiles_edges['lon_max'])
         print "Latitude (Y):  {} <-- {} -- {} --> {}".format(osm_tiles_edges['lat_min'], lat_min, lat_max, osm_tiles_edges['lat_max'])
         
         
         
-        height = a.size[0]
-        width = a.size[1]
+        height = a.size[1]
+        width = a.size[0]
         
         # Method 1: with vectors
         h_coord_vector = np.linspace(osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], width)
@@ -330,7 +333,20 @@ if plot:
                         'right': int(width - h_max_idx),
                         'bottom': int(height - v_min_idx),
                         'top': int(v_max_idx)}
-        a = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
+        #a = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
+        #a = a.crop((0, 0, int(width), int(height)))
+        
+        # Anche se non trimmo niente, l'immagine non basta.
+        # A guardare bene però, è stranissimo perché nonostante la textura abbia uan sua grandezza, non tutta viene usata!
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
         # Method 2: operations
         """
@@ -345,7 +361,7 @@ if plot:
         """
         
         
-        
+        img = np.asarray(a)
         scipy.misc.imsave('texture.jpg', img)
         
         
@@ -354,20 +370,31 @@ if plot:
         #img = np.transpose(img, axes=(1, 0, 2))
         
         
-    
-    
-    
+        
+        
+        
+        
+        
         # Read and apply texture
-        image_file = 'texture.jpg'
-        textureReader = vtk.vtkJPEGReader()
-        textureReader.SetFileName(image_file)
+        """
+        textureReader = vtk.vtkJPEGReader(file_name='texture.jpg')
         texture = vtk.vtkTexture()
         texture.SetInputConnection(textureReader.GetOutputPort())
+        """
+        bmp = tvtk.JPEGReader(file_name='texture.jpg')
+        #texture = tvtk.Texture()
+        #texture.interpolate = 0
+        # texture.set_input(0, bmp.get_output())
+        texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=0)
         
         mesh.actor.actor.mapper.scalar_visibility=False
         mesh.actor.enable_texture = True
         mesh.actor.tcoord_generator_mode = 'plane'
         mesh.actor.actor.texture = texture
+    
+
+
+
     
 # Hiking path
 track_x_m = list()
