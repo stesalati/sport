@@ -36,6 +36,7 @@ from mayavi import mlab
 from PIL import Image
 #import vtk
 from tvtk.api import tvtk
+from tvtk.common import configure_input
 import StringIO
 import urllib2#, urllib
 #from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
@@ -1405,7 +1406,17 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
             a = a.crop((trim_margins['left'], trim_margins['top'], width-trim_margins['right'], height-trim_margins['bottom']))
             """
             
-            # Save the texture as a JPG
+            # BUG
+            # The image is processed and saved correctly but sometimes it's displayed
+            # transposed and rotated. This is pretty strange as it depends on the size of
+            # the image, with a margin on 300 it's fine, below is loaded weirdly.
+            # A possible solution is to treat the image before saving it. However, a better
+            # solution needs to be found as in any case this is not an image processing
+            # problem but a loading and texturing problem.
+            a_trimmed = a_trimmed.transpose(Image.TRANSPOSE)
+            a_trimmed = a_trimmed.rotate(180)
+            
+            # Save the texture as a JPG            
             img = np.asarray(a_trimmed)
             scipy.misc.imsave('texture.jpg', img)
             
