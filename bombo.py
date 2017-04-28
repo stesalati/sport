@@ -1308,17 +1308,18 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     array_x_deg = np.tile(line_x_deg, (len(zone_ele), 1)).transpose()
     line_y_deg = np.arange(tile_lat_max+zone_y_min*gt[5], tile_lat_max+(zone_y_min+zone_y_size)*gt[5], gt[5])[0:zone_y_size]
     array_y_deg = np.tile(line_y_deg, (len(zone_ele[0]), 1))
-    zone_ele = zone_ele.transpose()
     
     # Display 3D elevation, depending on the plot type specified
     if mapping == 'meters':
         # Convert the coordinates in meters
-        line_y_m = np.array([degrees2metersLatY(j) for j in line_y_deg])
-        array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
-        
         array_x_m = np.empty_like(array_x_deg)
         for x, y in np.ndindex(array_x_deg.shape):
             array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
+            
+        line_y_m = np.array([degrees2metersLatY(j) for j in line_y_deg])
+        array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
+        
+        zone_ele = zone_ele.transpose()
         
         # Plot the resulting mesh
         if showplot:
@@ -1332,7 +1333,9 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
                              color=(1, 1, 1))
     
     if mapping == 'coords':
-        # Plot as mesh
+        zone_ele = zone_ele.transpose()
+        
+        # Plot the resulting mesh
         if showplot:
             """
             mesh = mlab.surf(np.fliplr(zone_ele) * elevation_scale,
