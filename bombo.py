@@ -1432,7 +1432,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
         zz = zone_ele[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
         track_z_m.append(zz)
-        track_z_deg.append(zz * 0.01)
+        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
     
     if mapping == 'meters' and showplot:
         # Display path nodes as spheres
@@ -1446,7 +1446,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
         
     if mapping == 'coords' and showplot:
-        mlab.points3d(track_x_deg, track_y_deg, track_z_deg, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
+        mlab.points3d(track_x_deg, track_y_deg, track_z_deg, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=50)
     
     if showplot:
         # Set camera position
