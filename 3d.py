@@ -25,6 +25,7 @@ import bombo as bombo
 import gdal_merge as gm
 
 TRACE_SIZE_ON_3DMAP = 200.0
+COORDS_PLOT_SCALE = 10000
 ELEVATION_DATA_FOLDER = "elevationdata/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
 USE_PROXY = False
@@ -36,7 +37,8 @@ tile_selection = 'auto'
 # tile_selection = 'iceland.tif'
 margin=300
 elevation_scale=1
-plot=True
+plot = 'coords'
+#plot = 'meters'
 use_osm_texture = True
 verbose=True
 
@@ -263,6 +265,7 @@ line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+z
 array_x_deg = np.tile(line_x_deg, (len(zone_ele), 1)).transpose()
 
 line_y_deg = np.arange(tile_lat_max+zone_y_min*gt[5], tile_lat_max+(zone_y_min+zone_y_size)*gt[5], gt[5])[0:zone_y_size]
+array_y_deg = np.tile(line_y_deg, (len(zone_ele[0]), 1))
 line_y_m = np.array([degrees2metersLatY(j) for j in line_y_deg])
 array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
 
@@ -272,20 +275,30 @@ for x, y in np.ndindex(array_x_deg.shape):
 
 zone_ele = zone_ele.transpose()
 
-# Display 3D surface
-if plot:
+# Display 3D elevation
+if plot == 'meters':
     mesh = mlab.mesh(array_x_m, array_y_m, zone_ele * elevation_scale,
                      color=(1, 1, 1))
+
+if plot == 'coords':
+    """
+    mesh = mlab.surf(np.fliplr(zone_ele) * elevation_scale,
+                     warp_scale=0.020,
+                     color=(1, 1, 1))
+    """
+    mesh = mlab.mesh(array_x_deg * COORDS_PLOT_SCALE, array_y_deg * COORDS_PLOT_SCALE, zone_ele * elevation_scale * 0.1,
+                     color=(1, 1, 1))
     
-    
+    # Display the OSM texture overlay    
     if use_osm_texture:
+        # Create the texture
         a, osm_tiles_edges = GetMapImageCluster(use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
                                                 lat_deg=lat_min, lon_deg=lon_min,
                                                 delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
                                                 zoom=13,
                                                 verbose=True)
-    
         
+        """
         # Provo a vedere se i punti corrispondono sulle due mappe
         # Questa verifica va fatta prima di modificare l'immagine, per vedere che i punti corrispondano
         fig, ax = mpld3.subplots()
@@ -294,26 +307,18 @@ if plot:
         points = ax.scatter(track_lon, track_lat, s=4)
         ax.grid(True)
         mpld3.show()
-        # La mappa sembra ok
+        # La mappa sembra ok, le coordinate corrispondono
+        """
         
-        
-        
-        # http://geoexamples.blogspot.de/2014/02/3d-terrain-visualization-with-python.html
-        # http://www.shadedrelief.com/
-        
-        
-        
-        #a = a.rotate(180)
-        #a = a.transpose(Image.TRANSPOSE)
-        #a = a.transpose(Image.FLIP_TOP_BOTTOM)
-        
-        # Adesso c'è da trimmare la texture in modo tale che corrisponda come coordinate a quello che c'è sotto.
-        
+        # Trim the map accordingly
         print("\nHow much needs to be trimmed")
         print "Longitude (X): {} <-- {} -- {} --> {}".format(osm_tiles_edges['lon_min'], lon_min, lon_max, osm_tiles_edges['lon_max'])
         print "Latitude (Y):  {} <-- {} -- {} --> {}".format(osm_tiles_edges['lat_min'], lat_min, lat_max, osm_tiles_edges['lat_max'])
         
-        
+        #a = a.rotate(180)
+        #a = a.transpose(Image.TRANSPOSE)
+        #a = a.transpose(Image.FLIP_TOP_BOTTOM)
+        #img = np.transpose(img, axes=(1, 0, 2))
         
         height = a.size[1]
         width = a.size[0]
@@ -330,23 +335,10 @@ if plot:
         v_max_idx, v_max_value = find_nearest(v_coord_vector, lat_max)
         
         trim_margins = {'left': int(h_min_idx),
-                        'right': int(width - h_max_idx),
-                        'bottom': int(height - v_min_idx),
+                        'right': int(h_max_idx),
+                        'bottom': int(v_min_idx),
                         'top': int(v_max_idx)}
-        #a = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
-        #a = a.crop((0, 0, int(width), int(height)))
-        
-        # Anche se non trimmo niente, l'immagine non basta.
-        # A guardare bene però, è stranissimo perché nonostante la textura abbia uan sua grandezza, non tutta viene usata!
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        a_trimmed = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
         
         # Method 2: operations
         """
@@ -360,20 +352,9 @@ if plot:
         a = a.crop((trim_margins['left'], trim_margins['top'], width-trim_margins['right'], height-trim_margins['bottom']))
         """
         
-        
-        img = np.asarray(a)
+        # Save the texture as a JPG
+        img = np.asarray(a_trimmed)
         scipy.misc.imsave('texture.jpg', img)
-        
-        
-        
-        
-        #img = np.transpose(img, axes=(1, 0, 2))
-        
-        
-        
-        
-        
-        
         
         # Read and apply texture
         """
@@ -382,19 +363,12 @@ if plot:
         texture.SetInputConnection(textureReader.GetOutputPort())
         """
         bmp = tvtk.JPEGReader(file_name='texture.jpg')
-        #texture = tvtk.Texture()
-        #texture.interpolate = 0
-        # texture.set_input(0, bmp.get_output())
         texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=0)
         
         mesh.actor.actor.mapper.scalar_visibility=False
         mesh.actor.enable_texture = True
         mesh.actor.tcoord_generator_mode = 'plane'
         mesh.actor.actor.texture = texture
-    
-
-
-
     
 # Hiking path
 track_x_m = list()
@@ -407,16 +381,19 @@ for i in range(np.size(track_lat, axis=0)):
   zz = zone_ele[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
   track_z_m.append(zz)
 
-if plot:
+if plot == 'meters':
+    pass
     # Display path nodes as spheres
     mlab.points3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
     # Display path as line
     # mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
+if plot == 'coords':
+    mlab.points3d(track_x_c, track_y_c, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
     
 mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(zone_ele), "NORTH", scale=(textsize, textsize, textsize))
 mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
     
-if plot:
+if plot == 'coords' or plot == 'meters':
     # Set camera position
     """
     mlab.view(azimuth=-90.0,

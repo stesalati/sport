@@ -803,6 +803,8 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
     
     3D
     http://nbviewer.jupyter.org/github/ocefpaf/folium_notebooks/blob/a68a89ae28587e6a9fbb21e7a1bd6042183a11bf/test_3D.ipynb
+    http://geoexamples.blogspot.de/2014/02/3d-terrain-visualization-with-python.html
+    http://www.shadedrelief.com/
     """
     
     # Mapping parameters
