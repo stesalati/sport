@@ -1067,6 +1067,7 @@ def parse_dms(dms):
 
 Example
 http://www.pyvotons.org/?page_id=183
+https://conference.scipy.org/SciPy2008/static/wiki/mayavi_tutorial_scipy08.pdf
 
 Tile download
 http://dwtkns.com/srtm/
@@ -1422,7 +1423,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
             
             # Read and apply texture
             bmp = tvtk.JPEGReader(file_name='texture.jpg')
-            texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=0)
+            texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
             mesh.actor.actor.mapper.scalar_visibility=False
             mesh.actor.enable_texture = True
             mesh.actor.tcoord_generator_mode = 'plane'
