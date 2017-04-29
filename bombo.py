@@ -1169,62 +1169,14 @@ def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_pro
     return Cluster, osm_tiles_edges
 
 
-def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevation_scale=1.0, mapping='coords', use_osm_texture=True, showplot=False, verbose=False):
+def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='auto', margin=100, verbose=False):
     
     def SRTMTile(lat, lon):
         xtile = int(np.trunc((lon - (-180)) / (360/72) + 1))
         ytile = int(np.trunc((60 - lat) / (360/72) + 1))
         return (xtile, ytile)
     
-    def degrees2metersLongX(latitude, longitudeSpan):
-      # latitude (in degrees) is used to convert a longitude angle to a distance in meters
-      return 2.0*math.pi*earthRadius*math.cos(math.radians(latitude))*longitudeSpan/360.0
-    
-    def degrees2metersLatY(latitudeSpan):
-      # Convert a latitude angle span to a distance in meters
-      return 2.0*math.pi*earthRadius*latitudeSpan/360.0
-    
-    def degrees2meters(longitude, latitude):
-      return (degrees2metersLongX(latitude, longitude), degrees2metersLatY(latitude))
-    
-    def find_nearest(array, value):
-        idx = (np.abs(array-value)).argmin()
-        return idx, array[idx]
-    
-    earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
-    px2deg = 0.0008333333333333334
-    textsize = margin * 10
     warnings = ""
-    
-    # If track_lat and track_lon are None, run a demo
-    if track_lat == track_lon == None:
-        # startingpoint = (44.1938472, 10.7012833)    # Cimone
-        # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
-        startingpoint = (-08.4113472, 116.4166667)    # Rinjani
-        # startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
-        
-        """
-        # Circle
-        R = 0.01
-        track_lat1 = np.linspace(-R, R, 1000).transpose()
-        track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
-        track_lat2 = np.linspace(R, -R, 1000).transpose()
-        track_lon2 = -np.sqrt(R**2 - track_lat2[0:1000]**2)
-        track_lat = np.hstack((track_lat1[0:-2], track_lat2))
-        track_lon = np.hstack((track_lon1[0:-2], track_lon2))
-        track_lat = track_lat + startingpoint[0]
-        track_lon = track_lon + startingpoint[1]
-        """
-        
-        # Dot
-        track_lat = [startingpoint[0]]
-        track_lon = [startingpoint[1]]
-        
-        # Determine the coordinates of the area we are interested in
-        lat_min = np.min(track_lat) - margin * px2deg
-        lat_max = np.max(track_lat) + margin * px2deg
-        lon_min = np.min(track_lon) - margin * px2deg
-        lon_max = np.max(track_lon) + margin * px2deg
     
     if tile_selection == 'auto':
         # Tiles will be determined automatically
@@ -1289,27 +1241,90 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         print "Latitude (Y):  {} <-- {} -- {} --> {}".format(tile_lat_min, lat_min, lat_max, tile_lat_max)
     
     # Selecting only a zone of the whole map, the one we're interested in plotting
-    zone_x_min = int((lon_min - tile_lon_min)/gt[1])
-    zone_x_size = int((lon_max - lon_min)/gt[1])
-    zone_y_min = int((lat_max - tile_lat_max)/gt[5])
-    zone_y_size = int((lat_min - lat_max)/gt[5])  # Inverted min and max as tiles are numbered, vertically, from north to south 
+    # Vertically inverted min and max as tiles are numbered, vertically, from north to south       
+    zone = {'x_min': int((lon_min - tile_lon_min)/gt[1]),
+            'x_size': int((lon_max - lon_min)/gt[1]),
+            'y_min': int((lat_max - tile_lat_max)/gt[5]),
+            'y_size': int((lat_min - lat_max)/gt[5])}
     
     if verbose:
         print "\nSelected elevation zone:"
-        print "Longitude (X): Start: {}, Size: {}".format(zone_x_min, zone_x_size)
-        print "Latitude (Y):  Start: {}, Size: {}".format(zone_y_min, zone_y_size)
+        print "Longitude (X): Start: {}, Size: {}".format(zone['x_min'], zone['x_size'])
+        print "Latitude (Y):  Start: {}, Size: {}".format(zone['y_min'], zone['y_size'])
     
     # Read elevation data
-    zone_ele = tile_ele.ReadAsArray(zone_x_min, zone_y_min, zone_x_size, zone_y_size).astype(np.float)
+    zone_ele = tile_ele.ReadAsArray(zone['x_min'], zone['y_min'], zone['x_size'], zone['y_size']).astype(np.float)
     
     # Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
     zone_ele[zone_ele < -418] = 0
     
-    # Create X,Y coordinates for zone_ele array (contains Z in meters)
-    line_x_deg = np.arange(tile_lon_min+zone_x_min*gt[1], tile_lon_min+(zone_x_min+zone_x_size)*gt[1], gt[1])[0:zone_x_size]
+    # Create X,Y coordinates for zone_ele array
+    line_x_deg = np.arange(tile_lon_min+zone['x_min']*gt[1], tile_lon_min+(zone['x_min']+zone['x_size'])*gt[1], gt[1])[0:zone['x_size']]
     array_x_deg = np.tile(line_x_deg, (len(zone_ele), 1)).transpose()
-    line_y_deg = np.arange(tile_lat_max+zone_y_min*gt[5], tile_lat_max+(zone_y_min+zone_y_size)*gt[5], gt[5])[0:zone_y_size]
+    line_y_deg = np.arange(tile_lat_max+zone['y_min']*gt[5], tile_lat_max+(zone['y_min']+zone['y_size'])*gt[5], gt[5])[0:zone['y_size']]
     array_y_deg = np.tile(line_y_deg, (len(zone_ele[0]), 1))
+    
+    return zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, zone_ele, gt, warnings
+    
+
+def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevation_scale=1.0, mapping='coords', use_osm_texture=True, showplot=False, verbose=False):
+    
+    def degrees2metersLongX(latitude, longitudeSpan):
+      # latitude (in degrees) is used to convert a longitude angle to a distance in meters
+      return 2.0*math.pi*earthRadius*math.cos(math.radians(latitude))*longitudeSpan/360.0
+    
+    def degrees2metersLatY(latitudeSpan):
+      # Convert a latitude angle span to a distance in meters
+      return 2.0*math.pi*earthRadius*latitudeSpan/360.0
+    
+    def degrees2meters(longitude, latitude):
+      return (degrees2metersLongX(latitude, longitude), degrees2metersLatY(latitude))
+    
+    def find_nearest(array, value):
+        idx = (np.abs(array-value)).argmin()
+        return idx, array[idx]
+    
+    earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
+    px2deg = 0.0008333333333333334
+    textsize = margin * 10
+    
+    # If track_lat and track_lon are None, run a demo
+    if track_lat == track_lon == None:
+        # startingpoint = (44.1938472, 10.7012833)    # Cimone
+        # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
+        startingpoint = (-08.4113472, 116.4166667)    # Rinjani
+        # startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
+        
+        """
+        # Circle
+        R = 0.01
+        track_lat1 = np.linspace(-R, R, 1000).transpose()
+        track_lon1 = np.sqrt(R**2 - track_lat1[0:1000]**2)
+        track_lat2 = np.linspace(R, -R, 1000).transpose()
+        track_lon2 = -np.sqrt(R**2 - track_lat2[0:1000]**2)
+        track_lat = np.hstack((track_lat1[0:-2], track_lat2))
+        track_lon = np.hstack((track_lon1[0:-2], track_lon2))
+        track_lat = track_lat + startingpoint[0]
+        track_lon = track_lon + startingpoint[1]
+        """
+        
+        # Dot
+        track_lat = [startingpoint[0]]
+        track_lon = [startingpoint[1]]
+        
+    lat_min = np.min(track_lat) - margin * px2deg
+    lat_max = np.max(track_lat) + margin * px2deg
+    lon_min = np.min(track_lon) - margin * px2deg
+    lon_max = np.max(track_lon) + margin * px2deg
+    
+    # Get GeoTIFF elevation data
+    zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_z, gt, warnings = GetGeoTIFFImageCluster(lat_min=lat_min,
+                                                                                                      lat_max=lat_max,
+                                                                                                      lon_min=lon_min,
+                                                                                                      lon_max=lon_max,
+                                                                                                      tile_selection=tile_selection,
+                                                                                                      margin=margin,
+                                                                                                      verbose=verbose)
     
     # Display 3D elevation, depending on the plot type specified
     if mapping == 'meters':
@@ -1319,34 +1334,34 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
             array_x_m[x,y] = degrees2metersLongX(line_y_deg[y], array_x_deg[x,y])
             
         line_y_m = np.array([degrees2metersLatY(j) for j in line_y_deg])
-        array_y_m = np.tile(line_y_m, (len(zone_ele[0]), 1))
+        array_y_m = np.tile(line_y_m, (len(array_z[0]), 1))
         
-        zone_ele = zone_ele.transpose()
+        array_z = array_z.transpose()
         
         # Plot the resulting mesh
         if showplot:
             print np.size(array_x_m, axis=0), np.size(array_x_m, axis=1)
             print np.size(array_y_m, axis=0), np.size(array_y_m, axis=1)
-            print np.size(zone_ele, axis=0), np.size(zone_ele, axis=1)
+            print np.size(array_z, axis=0), np.size(array_z, axis=1)
             
             mesh = mlab.mesh(array_x_m,
                              array_y_m,
-                             zone_ele * elevation_scale,
+                             array_z * elevation_scale,
                              color=(1, 1, 1))
     
     if mapping == 'coords':
-        zone_ele = zone_ele.transpose()
+        array_z = array_z.transpose()
         
         # Plot the resulting mesh
         if showplot:
             """
-            mesh = mlab.surf(np.fliplr(zone_ele) * elevation_scale,
+            mesh = mlab.surf(np.fliplr(array_z) * elevation_scale,
                          warp_scale=0.020,
                          color=(1, 1, 1))
             """
             mesh = mlab.mesh(array_x_deg * COORDS_MAPPING_SCALE,
                              array_y_deg * COORDS_MAPPING_SCALE,
-                             zone_ele * elevation_scale * COORDS_MAPPING_ZSCALE,
+                             array_z * elevation_scale * COORDS_MAPPING_ZSCALE,
                              color=(1, 1, 1))
         
         # OSM texture
@@ -1442,7 +1457,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         track_y_m.append(y)
         track_x_deg.append(track_lon[i] * COORDS_MAPPING_SCALE)
         track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
-        zz = zone_ele[int(round((track_lon[i] - (tile_lon_min+zone_x_min*gt[1])) / gt[1])), int(round((track_lat[i] - (tile_lat_max+zone_y_min*gt[5])) / gt[5]))]
+        zz = array_z[int(round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
         track_z_m.append(zz)
         track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
     
@@ -1454,7 +1469,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         # mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
         
         # Display north and start texts
-        mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(zone_ele), "NORTH", scale=(textsize, textsize, textsize))
+        mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(array_z), "NORTH", scale=(textsize, textsize, textsize))
         mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
         
     if mapping == 'coords' and showplot:
@@ -1477,7 +1492,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     if mapping == 'meters':
         terrain = {'x': array_x_m, 
                    'y': array_y_m,
-                   'z': zone_ele * elevation_scale}
+                   'z': array_z * elevation_scale}
         track = {'x': track_x_m,
                  'y': track_y_m,
                  'z': track_z_m,
@@ -1489,7 +1504,7 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     if mapping == 'coords':
         terrain = {'x': array_x_deg * COORDS_MAPPING_SCALE, 
                    'y': array_y_deg * COORDS_MAPPING_SCALE,
-                   'z': zone_ele * elevation_scale * COORDS_MAPPING_ZSCALE}
+                   'z': array_z * elevation_scale * COORDS_MAPPING_ZSCALE}
         track = {'x': track_x_deg,
                  'y': track_y_deg,
                  'z': track_z_deg,
