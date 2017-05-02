@@ -3,13 +3,16 @@
 
 import bombo as bombo
 
-bombo.PlotOnMap3D(track_lat=None,
-                  track_lon=None,
-                  tile_selection='auto',
-                  margin=200,
-                  elevation_scale=1.0,
-                  mapping='coords',
-                  #mapping='meters',
-                  use_osm_texture=True,
-                  showplot=True,
-                  verbose=False)
+map_elements, terrain, track, warnings = bombo.PlotOnMap3D(track_lat=[],
+                                                           track_lon=[],
+                                                           tile_selection='auto',
+                                                           margin=300,
+                                                           elevation_scale=1.0,
+                                                           mapping='coords',
+                                                           #mapping='meters',
+                                                           use_osm_texture=True,
+                                                           texture_type='osm',
+                                                           texture_zoom=13,
+                                                           showplot=True,
+                                                           animated=False,
+                                                           verbose=False)
