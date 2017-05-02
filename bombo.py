@@ -1076,6 +1076,12 @@ Example
 http://www.pyvotons.org/?page_id=183
 https://conference.scipy.org/SciPy2008/static/wiki/mayavi_tutorial_scipy08.pdf
 
+Mayavi
+http://docs.enthought.com/mayavi/mayavi/auto/mlab_figure.html
+http://docs.enthought.com/mayavi/mayavi/auto/mlab_helper_functions.html
+http://docs.enthought.com/mayavi/mayavi/auto/mlab_camera.html
+http://docs.enthought.com/mayavi/mayavi/auto/mlab_other_functions.html
+
 Tile download
 http://dwtkns.com/srtm/
 http://www.pyvotons.org/?page_id=178
@@ -1492,10 +1498,13 @@ def PlotOnMap3D(track_lat, track_lon,
     # Plotting
     if showplot:
         
+        fig = mlab.figure(figure='3D Map', size=(500, 500))
+        
         # Plot the elevation mesh
         elevation_mesh = mlab.mesh(terrain['x'],
                                    terrain['y'],
-                                   terrain['z'])
+                                   terrain['z'],
+                                   figure=fig)
         
         # Read and apply texture if needed
         if use_osm_texture:
@@ -1510,18 +1519,22 @@ def PlotOnMap3D(track_lat, track_lon,
         # track_line = mlab.points3d(track['x'], track['y'], track['z'], color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
         
         # Display path as line
-        track_line = mlab.plot3d(track['x'], track['y'], track['z'], color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=track['tube_radius'])
+        track_line = mlab.plot3d(track['x'], track['y'], track['z'],
+                                 figure=fig,
+                                 color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=track['tube_radius'])
         
         # Display north and start texts        
         north_label = mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
                                   terrain['y'][0][0],
                                   np.max(terrain['z']),
-                                  "NORTH", scale=(track['textsize'], track['textsize'], track['textsize']))
+                                  "NORTH",
+                                  figure=fig, scale=(track['textsize'], track['textsize'], track['textsize']))
         
         start_label = mlab.text3d(track['x'][0],
                                   track['y'][0],
                                   track['z'][0] * 1.5,
-                                  "START", scale=(track['textsize'], track['textsize'], track['textsize']))
+                                  "START",
+                                  figure=fig, scale=(track['textsize'], track['textsize'], track['textsize']))
         
         # Set camera position
         mlab.view(azimuth=-90.0,
@@ -1530,13 +1543,15 @@ def PlotOnMap3D(track_lat, track_lon,
                   distance='auto',
                   # focalpoint=(1000.0, 1000.0, 1000.0),
                   focalpoint='auto',
-                  roll=0.0)
+                  roll=0.0,
+                  figure=fig)
         
         # Show the 3D map
         mlab.show()
         
         # Adding one more dictionary
-        map_elements = {'elevation_mesh': elevation_mesh,
+        map_elements = {'figure': fig,
+                        'elevation_mesh': elevation_mesh,
                         'track_line': track_line,
                         'north_label': north_label,
                         'start_label': start_label}
