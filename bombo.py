@@ -36,7 +36,13 @@ from mayavi import mlab
 from PIL import Image
 #import vtk
 from tvtk.api import tvtk
-from tvtk.common import configure_input
+#from tvtk.common import configure_input
+from traits.api import HasTraits, Instance#, on_trait_change
+from traitsui.api import View, Item
+from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+
+
+
 import StringIO
 import urllib2#, urllib
 #from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
@@ -82,6 +88,7 @@ USE_PROXY = False
 PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 COORDS_MAPPING_SCALE = 10000
 COORDS_MAPPING_ZSCALE = 0.1
+TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
 
 #==============================================================================
 # Kalman processing functions
@@ -1106,6 +1113,8 @@ def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_pro
       lat_deg = math.degrees(lat_rad)
       return (lat_deg, lon_deg)
     
+    warnings = ""
+    
     # Proxy setup with urllib2
     if use_proxy:
         proxy = urllib2.ProxyHandler({'http': proxy_data})
@@ -1154,7 +1163,7 @@ def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_pro
                     # Download from the Internet and save it locally for future
                     # use
                     imgurl = smurl.format(zoom, xtile, ytile)
-                    print("OSM tile not found locally, have to download it from: " + imgurl)
+                    warnings = warnings + "OSM tile not found locally, downloading it from {} ".format(imgurl) + "\n"
                     imgstr = urllib2.urlopen(imgurl).read()
                     tile = Image.open(StringIO.StringIO(imgstr))
                     with open(OSM_DATA_FOLDER + savename.format(zoom, xtile, ytile), 'wb') as f:
@@ -1162,11 +1171,11 @@ def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_pro
                         f.close()
                 # Append it to the rest of the cluster
                 Cluster.paste(tile, box=((xtile-xmin)*256 ,  (ytile-ymin)*255))
-            except: 
-                print("OSM tile loading failed.")
+            except:
+                warnings = warnings + "OSM tile loading failed!\n"
                 tile = None
                 
-    return Cluster, osm_tiles_edges
+    return Cluster, osm_tiles_edges, warnings
 
 
 def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='auto', margin=100, verbose=False):
@@ -1267,7 +1276,14 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
     return zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, zone_ele, gt, warnings
     
 
-def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevation_scale=1.0, mapping='coords', use_osm_texture=True, showplot=False, verbose=False):
+def PlotOnMap3D(track_lat, track_lon,
+                tile_selection='auto',
+                margin=100,
+                elevation_scale=1.0,
+                mapping='coords',
+                use_osm_texture=True, texture_type='osm', texture_zoom=13,
+                showplot=False, animated=False,
+                verbose=False):
     
     def degrees2metersLongX(latitude, longitudeSpan):
       # latitude (in degrees) is used to convert a longitude angle to a distance in meters
@@ -1287,15 +1303,15 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     earthRadius = 6371000 # Earth radius in meters (yes, it's an approximation) https://en.wikipedia.org/wiki/Earth_radius
     px2deg = 0.0008333333333333334
     textsize = margin * 10
+    warnings = ""
     
     # If track_lat and track_lon are None, run a demo
-    if track_lat == track_lon == None:
+    if len(track_lat) == 0 or len(track_lon) == 0:
         # startingpoint = (44.1938472, 10.7012833)    # Cimone
         # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
         startingpoint = (-08.4113472, 116.4166667)    # Rinjani
         # startingpoint = (64.0158333, -016.6747222)  # Peak in Iceland
         
-        """
         # Circle
         R = 0.01
         track_lat1 = np.linspace(-R, R, 1000).transpose()
@@ -1306,11 +1322,12 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         track_lon = np.hstack((track_lon1[0:-2], track_lon2))
         track_lat = track_lat + startingpoint[0]
         track_lon = track_lon + startingpoint[1]
-        """
         
+        """
         # Dot
         track_lat = [startingpoint[0]]
         track_lon = [startingpoint[1]]
+        """
         
     lat_min = np.min(track_lat) - margin * px2deg
     lat_max = np.max(track_lat) + margin * px2deg
@@ -1318,13 +1335,17 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
     lon_max = np.max(track_lon) + margin * px2deg
     
     # Get GeoTIFF elevation data
-    zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_z, gt, warnings = GetGeoTIFFImageCluster(lat_min=lat_min,
-                                                                                                      lat_max=lat_max,
-                                                                                                      lon_min=lon_min,
-                                                                                                      lon_max=lon_max,
-                                                                                                      tile_selection=tile_selection,
-                                                                                                      margin=margin,
-                                                                                                      verbose=verbose)
+    zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_z, gt, geotiff_warnings = GetGeoTIFFImageCluster(lat_min=lat_min,
+                                                                                                                   lat_max=lat_max,
+                                                                                                                   lon_min=lon_min,
+                                                                                                                   lon_max=lon_max,
+                                                                                                                   tile_selection=tile_selection,
+                                                                                                                   margin=margin,
+                                                                                                                   verbose=verbose)
+    warnings = warnings + geotiff_warnings
+    
+    # Create figure
+    #fig = mlab.figure(figure='3dmap', size=(500, 500))
     
     # Display 3D elevation, depending on the plot type specified
     if mapping == 'meters':
@@ -1337,42 +1358,20 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         array_y_m = np.tile(line_y_m, (len(array_z[0]), 1))
         
         array_z = array_z.transpose()
-        
-        # Plot the resulting mesh
-        if showplot:
-            print np.size(array_x_m, axis=0), np.size(array_x_m, axis=1)
-            print np.size(array_y_m, axis=0), np.size(array_y_m, axis=1)
-            print np.size(array_z, axis=0), np.size(array_z, axis=1)
-            
-            mesh = mlab.mesh(array_x_m,
-                             array_y_m,
-                             array_z * elevation_scale,
-                             color=(1, 1, 1))
     
     if mapping == 'coords':
         array_z = array_z.transpose()
-        
-        # Plot the resulting mesh
-        if showplot:
-            """
-            mesh = mlab.surf(np.fliplr(array_z) * elevation_scale,
-                         warp_scale=0.020,
-                         color=(1, 1, 1))
-            """
-            mesh = mlab.mesh(array_x_deg * COORDS_MAPPING_SCALE,
-                             array_y_deg * COORDS_MAPPING_SCALE,
-                             array_z * elevation_scale * COORDS_MAPPING_ZSCALE,
-                             color=(1, 1, 1))
         
         # OSM texture
         if use_osm_texture:
             
             # Create the texture
-            a, osm_tiles_edges = GetOSMImageCluster(lat_deg=lat_min, lon_deg=lon_min,
-                                                    delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
-                                                    zoom=13,
-                                                    use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
-                                                    verbose=verbose)
+            a, osm_tiles_edges, osm_warnings = GetOSMImageCluster(lat_deg=lat_min, lon_deg=lon_min,
+                                                                  delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
+                                                                  zoom=texture_zoom,
+                                                                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                                                                  verbose=verbose)
+            warnings = warnings + osm_warnings
             
             """
             # Provo a vedere se i punti corrispondono sulle due mappe
@@ -1422,27 +1421,22 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
             a = a.crop((trim_margins['left'], trim_margins['top'], width-trim_margins['right'], height-trim_margins['bottom']))
             """
             
-            # BUG
+            # BUG TODO
             # The image is processed and saved correctly but sometimes it's displayed
             # transposed and rotated. This is pretty strange as it depends on the size of
             # the image, with a margin on 300 it's fine, below is loaded weirdly.
             # A possible solution is to treat the image before saving it. However, a better
             # solution needs to be found as in any case this is not an image processing
             # problem but a loading and texturing problem.
+            #if margin < 235:
+            """
             a_trimmed = a_trimmed.transpose(Image.TRANSPOSE)
             a_trimmed = a_trimmed.rotate(180)
+            """
             
-            # Save the texture as a JPG            
+            # Save the texture as a PNG
             img = np.asarray(a_trimmed)
-            scipy.misc.imsave('texture.jpg', img)
-            
-            # Read and apply texture
-            bmp = tvtk.JPEGReader(file_name='texture.jpg')
-            texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
-            mesh.actor.actor.mapper.scalar_visibility=False
-            mesh.actor.enable_texture = True
-            mesh.actor.tcoord_generator_mode = 'plane'
-            mesh.actor.actor.texture = texture
+            scipy.misc.imsave(TEXTURE_FILE, img)
         
     # Track
     track_x_m = list()
@@ -1460,35 +1454,15 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
         zz = array_z[int(round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
         track_z_m.append(zz)
         track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
+       
+    # Creating the export dictionaries
     
-    if mapping == 'meters' and showplot:
-        # Display path nodes as spheres
-        mlab.points3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
-        
-        # Display path as line
-        # mlab.plot3d(track_x_m, track_y_m, track_z_m, color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=TRACE_SIZE_ON_3DMAP)
-        
-        # Display north and start texts
-        mlab.text3d((array_x_m[0][0] + array_x_m[-1][0])/2, array_y_m[0][0], np.max(array_z), "NORTH", scale=(textsize, textsize, textsize))
-        mlab.text3d(track_x_m[0], track_y_m[0], track_z_m[0]*1.5, "START", scale=(textsize, textsize, textsize))
-        
-    if mapping == 'coords' and showplot:
-        mlab.points3d(track_x_deg, track_y_deg, track_z_deg, color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=50)
+    # TODO
+    # This bit is intrisically WRONG: I want map_elements to be returned even though the plot
+    # is not requested, so I can export directly mesh, points and labels instead of values to generate
+    # them. Unfortunately, for the moment I've got no idea how, so I just do this. It needs to be
+    # corrected in the future though.
     
-    if showplot:
-        # Set camera position
-        mlab.view(azimuth=-90.0,
-                  elevation=60.0,
-                  # distance=1.0,
-                  distance='auto',
-                  # focalpoint=(1000.0, 1000.0, 1000.0),
-                  focalpoint='auto',
-                  roll=0.0)
-        
-        # Show the 3D map
-        mlab.show()
-    
-    # Creating the export dictionary
     if mapping == 'meters':
         terrain = {'x': array_x_m, 
                    'y': array_y_m,
@@ -1510,10 +1484,64 @@ def PlotOnMap3D(track_lat, track_lon, tile_selection='auto', margin=100, elevati
                  'z': track_z_deg,
                  'color': (255.0/255.0, 102.0/255.0, 0),
                  'line_width': 10.0,
-                 'tube_radius': TRACE_SIZE_ON_3DMAP,
-                 'textsize': textsize}
-    
-    return terrain, track, warnings
+                 'tube_radius': TRACE_SIZE_ON_3DMAP / 20,
+                 'textsize': textsize / 20}
+        
+    map_elements = None
+        
+    # Plotting
+    if showplot:
+        
+        # Plot the elevation mesh
+        elevation_mesh = mlab.mesh(terrain['x'],
+                                   terrain['y'],
+                                   terrain['z'])
+        
+        # Read and apply texture if needed
+        if use_osm_texture:
+            bmp = tvtk.PNGReader(file_name=TEXTURE_FILE)
+            texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
+            elevation_mesh.actor.actor.mapper.scalar_visibility=False
+            elevation_mesh.actor.enable_texture = True
+            elevation_mesh.actor.tcoord_generator_mode = 'plane'
+            elevation_mesh.actor.actor.texture = texture
+        
+        # Display path nodes as spheres
+        # track_line = mlab.points3d(track['x'], track['y'], track['z'], color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
+        
+        # Display path as line
+        track_line = mlab.plot3d(track['x'], track['y'], track['z'], color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=track['tube_radius'])
+        
+        # Display north and start texts        
+        north_label = mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
+                                  terrain['y'][0][0],
+                                  np.max(terrain['z']),
+                                  "NORTH", scale=(track['textsize'], track['textsize'], track['textsize']))
+        
+        start_label = mlab.text3d(track['x'][0],
+                                  track['y'][0],
+                                  track['z'][0] * 1.5,
+                                  "START", scale=(track['textsize'], track['textsize'], track['textsize']))
+        
+        # Set camera position
+        mlab.view(azimuth=-90.0,
+                  elevation=60.0,
+                  # distance=1.0,
+                  distance='auto',
+                  # focalpoint=(1000.0, 1000.0, 1000.0),
+                  focalpoint='auto',
+                  roll=0.0)
+        
+        # Show the 3D map
+        mlab.show()
+        
+        # Adding one more dictionary
+        map_elements = {'elevation_mesh': elevation_mesh,
+                        'track_line': track_line,
+                        'north_label': north_label,
+                        'start_label': start_label}
+        
+    return map_elements, terrain, track, warnings
 
 
 """
