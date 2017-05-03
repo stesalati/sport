@@ -259,14 +259,14 @@ class MayaviQWidget(QWidget):
         self.ui.setParent(self)
     
     # I created this function to call the visualization.update_plot function, that is part of the Visualization class
-    def update_plot(self, map_elements, terrain, track):
-        self.visualization.update_plot(map_elements, terrain, track)
+    def update_plot(self, terrain, track):
+        self.visualization.update_plot(terrain, track)
         
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
 
     #@on_trait_change('scene.activated')
-    def update_plot(self, map_elements, terrain, track):
+    def update_plot(self, terrain, track):
         # This function is called when the view is opened. We don't
         # populate the scene when the view is not yet open, as some
         # VTK features require a GLContext.
@@ -293,7 +293,7 @@ class Visualization(HasTraits):
         self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
                                color=track['color'],
                                line_width=track['line_width'],
-                               tube_radius=track['tube_radius'])
+                               tube_radius=track['line_radius'])
 
     # the layout of the dialog screated
     view = View(Item('scene',
@@ -515,22 +515,21 @@ class MainWindow(QMainWindow):
                     tile_selection = 'auto'
                 else:
                     tile_selection = self.text3DMapName.text()
-                map_elements, terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
-                                                                           tile_selection=tile_selection,
-                                                                           margin=self.spinbox3DMargin.value(),
-                                                                           elevation_scale=self.spinbox3DElevationScale.value(),
-                                                                           mapping='coords',
-                                                                           use_osm_texture=True,
-                                                                           texture_type='osm',
-                                                                           texture_zoom=self.spinbox3DOSMZoom.value(),
-                                                                           showplot=False,
-                                                                           animated=False,
-                                                                           verbose=False)
+                terrain, track, warnings = bombo.Generate3DMap(new_coords['lat'], new_coords['lon'],
+                                                               tile_selection=tile_selection,
+                                                               margin=self.spinbox3DMargin.value(),
+                                                               elevation_scale=self.spinbox3DElevationScale.value(),
+                                                               mapping='coords',
+                                                               use_osm_texture=True,
+                                                               texture_type='osm',
+                                                               texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                               texture_invert=self.check3DOSMInvert.isChecked(),
+                                                               verbose=False)
                 
                 self.textWarningConsole.append(warnings)
                 
                 if terrain is not None:    
-                    self.map3d.update_plot(map_elements, terrain, track)
+                    self.map3d.update_plot(terrain, track)
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
@@ -555,22 +554,21 @@ class MainWindow(QMainWindow):
             else:
                 tile_selection = self.text3DMapName.text()
             
-            map_elements, terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
-                                                                        tile_selection=tile_selection,
-                                                                        margin=self.spinbox3DMargin.value(),
-                                                                        elevation_scale=self.spinbox3DElevationScale.value(),
-                                                                        mapping='coords',
-                                                                        use_osm_texture=True,
-                                                                        texture_type='osm',
-                                                                        texture_zoom=self.spinbox3DOSMZoom.value(),
-                                                                        showplot=False,
-                                                                        animated=False,
-                                                                        verbose=False)
+            terrain, track, warnings = bombo.Generate3DMap([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
+                                                           tile_selection=tile_selection,
+                                                           margin=self.spinbox3DMargin.value(),
+                                                           elevation_scale=self.spinbox3DElevationScale.value(),
+                                                           mapping='coords',
+                                                           use_osm_texture=True,
+                                                           texture_type='osm',
+                                                           texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                           texture_invert=self.check3DOSMInvert.isChecked(),
+                                                           verbose=False)
             
             self.textWarningConsole.append(warnings)
             
             if terrain is not None:    
-                self.map3d.update_plot(map_elements, terrain, track)
+                self.map3d.update_plot(terrain, track)
             d.done(0)
             
         def Convert():
@@ -793,15 +791,19 @@ class MainWindow(QMainWindow):
         self.spinbox3DMargin.setValue(100)
         self.spinbox3DMargin.setSingleStep(10)
         hBox3D.addWidget(self.spinbox3DMargin)
+        
         labelSpace = QLabel('  ')
         hBox3D.addWidget(labelSpace)
-        label3DElevationScale = QLabel('Elevation scale')
+        
+        label3DElevationScale = QLabel('Elev. scale')
         hBox3D.addWidget(label3DElevationScale)
         self.spinbox3DElevationScale = QDoubleSpinBox()
         self.spinbox3DElevationScale.setRange(1,50)
         self.spinbox3DElevationScale.setSingleStep(0.1)
         hBox3D.addWidget(self.spinbox3DElevationScale)
+        
         hBox3D.addWidget(labelSpace)
+        
         label3DOSMZoom = QLabel('Zoom')
         hBox3D.addWidget(label3DOSMZoom)
         self.spinbox3DOSMZoom = QSpinBox()
@@ -809,6 +811,12 @@ class MainWindow(QMainWindow):
         self.spinbox3DOSMZoom.setValue(13)
         self.spinbox3DOSMZoom.setSingleStep(1)
         hBox3D.addWidget(self.spinbox3DOSMZoom)
+        
+        hBox3D.addWidget(labelSpace)
+        
+        self.check3DOSMInvert = QCheckBox("Invert")
+        self.check3DOSMInvert.setChecked(False)
+        hBox3D.addWidget(self.check3DOSMInvert)
         vBox2.addLayout(hBox3D)
         
         vBox_left.addLayout(vBox2)
