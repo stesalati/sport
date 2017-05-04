@@ -1503,7 +1503,7 @@ def Plot3DMap(terrain, track, use_osm_texture, animated=False):
                                terrain['z'],
                                figure=fig)
     
-    # Read and apply texture if needed
+    # Read and apply texture
     if use_osm_texture:
         bmp = tvtk.PNGReader(file_name=TEXTURE_FILE)
         texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
@@ -1512,26 +1512,32 @@ def Plot3DMap(terrain, track, use_osm_texture, animated=False):
         elevation_mesh.actor.tcoord_generator_mode = 'plane'
         elevation_mesh.actor.actor.texture = texture
     
-    # Display path nodes as spheres
-    # track_line = mlab.points3d(track['x'], track['y'], track['z'], color=(255.0/255.0, 102.0/255.0, 0), mode='sphere', scale_factor=500)
+    # Display path nodes
+    if len(track['x']) == 1:
+        track_line = mlab.points3d(track['x'], track['y'], track['z'],
+                                   figure=fig,
+                                   color=track['color'], mode='sphere', scale_factor=track['line_radius']*10)
+    else:
+        track_line = mlab.plot3d(track['x'], track['y'], track['z'],
+                                 figure=fig,
+                                 color=track['color'], line_width=10.0, tube_radius=track['line_radius'])
     
-    # Display path as line
-    track_line = mlab.plot3d(track['x'], track['y'], track['z'],
-                             figure=fig,
-                             color=(255.0/255.0, 102.0/255.0, 0), line_width=10.0, tube_radius=track['line_radius'])
-    
-    # Display north and start texts        
+    # Display north text
     north_label = mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
                               terrain['y'][0][0],
                               np.max(terrain['z']),
                               "NORTH",
-                              figure=fig, scale=(track['textsize'], track['textsize'], track['textsize']))
+                              figure=fig,
+                              scale=(track['textsize'], track['textsize'], track['textsize']))
     
-    start_label = mlab.text3d(track['x'][0],
-                              track['y'][0],
-                              track['z'][0] * 1.5,
-                              "START",
-                              figure=fig, scale=(track['textsize'], track['textsize'], track['textsize']))
+    # Displaying start test
+    if len(track['x']) > 1:
+        start_label = mlab.text3d(track['x'][0],
+                                  track['y'][0],
+                                  track['z'][0] * 1.5,
+                                  "START",
+                                  figure=fig,
+                                  scale=(track['textsize'], track['textsize'], track['textsize']))
     
     # Set camera position
     mlab.view(azimuth=-90.0,
