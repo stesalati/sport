@@ -276,25 +276,43 @@ class Visualization(HasTraits):
         
         # Here's were I embedded my code
         self.scene.mlab.clf()
-        elevation_mesh = self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
         
+        # Plot the elevation mesh
+        elevation_mesh = self.scene.mlab.mesh(terrain['x'],
+                                              terrain['y'],
+                                              terrain['z'])
+        
+        # Read and apply texture
         bmp = tvtk.PNGReader(file_name=bombo.TEXTURE_FILE)
         texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
         elevation_mesh.actor.actor.mapper.scalar_visibility=False
         elevation_mesh.actor.enable_texture = True
         elevation_mesh.actor.tcoord_generator_mode = 'plane'
         elevation_mesh.actor.actor.texture = texture
-           
-        self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
-                                terrain['y'][0][0],
-                                np.max(terrain['z']),
-                                "NORTH", scale=(track['textsize'], track['textsize'], track['textsize']))
         
-        self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
-                               color=track['color'],
-                               line_width=track['line_width'],
-                               tube_radius=track['line_radius'])
-
+        # Display path nodes
+        if len(track['x']) == 1:
+            track_line = self.scene.mlab.points3d(track['x'], track['y'], track['z'],
+                                                  color=track['color'], mode='sphere', scale_factor=track['line_radius']*10)
+        else:
+            track_line = self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
+                                                color=track['color'], line_width=10.0, tube_radius=track['line_radius'])
+        
+        # Display north text
+        north_label = self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
+                                             terrain['y'][0][0],
+                                             np.max(terrain['z']),
+                                             "NORTH",
+                                             scale=(track['textsize'], track['textsize'], track['textsize']))
+        
+        # Displaying start test
+        if len(track['x']) > 1:
+            start_label = self.scene.mlab.text3d(track['x'][0],
+                                                 track['y'][0],
+                                                 track['z'][0] * 1.5,
+                                                 "START",
+                                                 scale=(track['textsize'], track['textsize'], track['textsize']))
+        
     # the layout of the dialog screated
     view = View(Item('scene',
                      editor=SceneEditor(scene_class=MayaviScene),
