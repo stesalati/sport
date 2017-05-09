@@ -1173,7 +1173,8 @@ def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_pro
                     # Download from the Internet and save it locally for future
                     # use
                     imgurl = smurl.format(zoom, xtile, ytile)
-                    warnings = warnings + "OSM tile not found locally, downloading it from {} ".format(imgurl) + "\n"
+                    warnings = warnings + "OSM tile not found locally, downloading it from {} \n".format(imgurl)
+                    print "OSM tile not found locally, downloading it from {} ".format(imgurl)
                     imgstr = urllib2.urlopen(imgurl).read()
                     tile = Image.open(StringIO.StringIO(imgstr))
                     with open(OSM_DATA_FOLDER + savename.format(zoom, xtile, ytile), 'wb') as f:
@@ -1226,6 +1227,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
                         gdal_merge_command_list.append(filename)
                         if not os.path.isfile(filename):
                             warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
+                            print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                             return None, None, warnings
                 if verbose:
                     print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
@@ -1237,6 +1239,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
             filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
             if not os.path.isfile(filename):
                 warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
+                print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                 return None, None, warnings
                 
     else:

@@ -540,7 +540,7 @@ class MainWindow(QMainWindow):
             self.map2d.load(QtCore.QUrl(bombo.MAP_2D_FILENAME))
             self.map2d.show()
                 
-            # Generate 3D plot
+            # Generate 3D plot, only with one track for the moment
             if len(self.gpxselectedlist) == 1:
                 if self.check3DMapSelection.isChecked():
                     tile_selection = 'auto'
@@ -561,6 +561,7 @@ class MainWindow(QMainWindow):
                 
                 if terrain is not None:    
                     self.map3d.update_plot(terrain, track)
+            
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
@@ -735,7 +736,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(showpoint)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(36,36))
+        toolbar.setIconSize(QtCore.QSize(30,30))
                 
         # Status bar
         self.statusBar().show()
@@ -856,6 +857,7 @@ class MainWindow(QMainWindow):
         vBox2.addLayout(hBox3D)
         
         vBox_left.addLayout(vBox2)
+        
         
         # 3rd stats tree
         self.tree = QTreeView()
