@@ -10,7 +10,7 @@ TODO
 - Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
 - Aggiungere opzione per settare un proxy dall'applicazione
 - Integrare la mappa 2D di OSM all'interno della GUI tramite un browser
-
+- Vedere se affinare lo smoothing dopo il filtro di Kalman o lasciar perdere ed eliminare il codice commentato
 """
 
 import os
@@ -80,6 +80,10 @@ Plots
 http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
 http://stackoverflow.com/questions/35414003/python-how-can-i-display-cursor-on-all-axes-vertically-but-only-on-horizontall
 http://matplotlib.org/users/annotations.html
+
+Web browser
+https://wiki.python.org/moin/PyQt/Embedding%20Widgets%20in%20Web%20Pages
+http://stackoverflow.com/questions/37124944/qwebview-troubling-with-loading-html-in-pyqt4
 """
 
 FONTSIZE = 8
