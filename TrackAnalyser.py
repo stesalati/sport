@@ -519,23 +519,26 @@ class MainWindow(QMainWindow):
                 self.plotEmbeddedElevationAndSpeed.clear_figure()
                 self.plotEmbeddedDetails.clear_figure()
             
-            # Generate html plot
-            if self.check2DMap.isChecked():
-                # If only one track is selected, proceed with the complete output, otherwise just plot the traces
-                if len(self.gpxselectedlist) is 1:
-                    bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
-                                    coords_array2_list=self.proc_coords_to_plot2,
-                                    coords_palette = self.selectedpalette,
-                                    tangentdata=None,
-                                    balloondata_list=self.proc_balloondata,
-                                    rdp_reduction=self.checkUseRDP.isChecked())
-                else:
-                    bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
-                                    coords_array2_list=None,
-                                    coords_palette = self.selectedpalette,
-                                    tangentdata=None,
-                                    balloondata_list=self.proc_balloondata,
-                                    rdp_reduction=self.checkUseRDP.isChecked())
+            # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
+            if len(self.gpxselectedlist) is 1:
+                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                coords_array2_list=self.proc_coords_to_plot2,
+                                coords_palette = self.selectedpalette,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
+                                rdp_reduction=self.checkUseRDP.isChecked(),
+                                showmap=bool(self.check2DMapInExternalBrowser.isChecked()))
+            else:
+                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                coords_array2_list=None,
+                                coords_palette = self.selectedpalette,
+                                tangentdata=None,
+                                balloondata_list=self.proc_balloondata,
+                                rdp_reduction=self.checkUseRDP.isChecked(),
+                                showmap=bool(self.check2DMapInExternalBrowser.isChecked()))
+            
+            self.map2d.load(QtCore.QUrl(bombo.MAP_2D_FILENAME))
+            self.map2d.show()
                 
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
@@ -573,8 +576,8 @@ class MainWindow(QMainWindow):
                 self.settings.setValue("last_point_coord_lat", QtCore.QVariant(self.spinboxLatDec.value()))
                 self.settings.setValue("last_point_coord_lon", QtCore.QVariant(self.spinboxLonDec.value()))
             
-            # Select the 3D tab
-            self.tab.setCurrentIndex(1)
+            # Select the 3D Map tab
+            self.tab.setCurrentIndex(2)
             
             # Plot
             if self.check3DMapSelection.isChecked():
@@ -732,7 +735,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(showpoint)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(24,24))
+        toolbar.setIconSize(QtCore.QSize(36,36))
                 
         # Status bar
         self.statusBar().show()
@@ -789,12 +792,12 @@ class MainWindow(QMainWindow):
         
         # 2D interactive map settings
         hBox2DMap = QHBoxLayout()
-        self.check2DMap = QCheckBox("Plot interactive OSM")
-        self.check2DMap.setChecked(False)
-        hBox2DMap.addWidget(self.check2DMap)
         self.checkUseRDP = QCheckBox("Use RDP to reduce points")
         self.checkUseRDP.setChecked(False)
         hBox2DMap.addWidget(self.checkUseRDP)   
+        self.check2DMapInExternalBrowser = QCheckBox("Show in external browser")
+        self.check2DMapInExternalBrowser.setChecked(False)
+        hBox2DMap.addWidget(self.check2DMapInExternalBrowser)
         vBox2.addLayout(hBox2DMap)
         
         line = QFrame()
@@ -906,8 +909,20 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab1.setLayout(vBox_tab)
         
-        # Tab 2: 3D plot
+        # Tab 2: html 2D map
         tab2 = QWidget()
+        # The tab layout
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
+        # Area
+        self.map2d = QtWebEngineWidgets.QWebEngineView()
+        # Add widgets to the layout
+        vBox_tab.addWidget(self.map2d)
+        # Associate the layout to the tab
+        tab2.setLayout(vBox_tab)
+        
+        # Tab 3: 3D plot
+        tab3 = QWidget()
         # The tab layout
         vBox_tab = QVBoxLayout()
         vBox_tab.setSpacing(5)
@@ -916,24 +931,10 @@ class MainWindow(QMainWindow):
         # Add widgets to the layout
         vBox_tab.addWidget(self.map3d)
         # Associate the layout to the tab
-        tab2.setLayout(vBox_tab)
+        tab3.setLayout(vBox_tab)
         
-        # Tab 4: html 2D map
+        # Tab 4: Details
         tab4 = QWidget()
-        # The tab layout
-        vBox_tab = QVBoxLayout()
-        vBox_tab.setSpacing(5)
-        # Area
-        self.browser = QtWebEngineWidgets.QWebEngineView()
-        self.browser.load(QtCore.QUrl("under_development/simplecode.html"))
-        self.browser.show()
-        # Add widgets to the layout
-        vBox_tab.addWidget(self.browser)
-        # Associate the layout to the tab
-        tab4.setLayout(vBox_tab)
-        
-        # Tab 3: Details
-        tab3 = QWidget()
         # The tab layout
         vBox_tab = QVBoxLayout()
         vBox_tab.setSpacing(5)
@@ -946,13 +947,13 @@ class MainWindow(QMainWindow):
         vBox_tab.addWidget(self.plotEmbeddedDetails)
         vBox_tab.addWidget(self.mpl_toolbar2)
         # Associate the layout to the tab
-        tab3.setLayout(vBox_tab)
+        tab4.setLayout(vBox_tab)
                 
         # Associate tabs
         self.tab.addTab(tab1, "Summary")
-        self.tab.addTab(tab2, "3D")
-        self.tab.addTab(tab4, "Map")
-        self.tab.addTab(tab3, "Details")
+        self.tab.addTab(tab2, "2D Map")
+        self.tab.addTab(tab3, "3D Map")
+        self.tab.addTab(tab4, "Details")
         
         hBox.addWidget(self.tab)
         

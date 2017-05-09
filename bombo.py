@@ -80,6 +80,7 @@ PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
 KALMAN_N_ITERATIONS = 5
 
+MAP_2D_FILENAME = "osm.html"
 TRACE_SIZE_ON_3DMAP = 50.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
 OSM_DATA_FOLDER = "map_tiles/"
@@ -813,7 +814,7 @@ def GeneratePalette(N=5):
         hex_out.append("#" + "".join(map(lambda x: chr(x).encode('hex'),rgb)))
     return hex_out
 
-def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata, balloondata_list, rdp_reduction):
+def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata, balloondata_list, rdp_reduction=False, showmap=False):
     """
     Documentation
     https://www.youtube.com/watch?v=BwqBNpzQwJg
@@ -831,9 +832,6 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
     http://geoexamples.blogspot.de/2014/02/3d-terrain-visualization-with-python.html
     http://www.shadedrelief.com/
     """
-    
-    # Mapping parameters
-    HTML_FILENAME = "osm.html"
     
     # RDP (Ramer Douglas Peucker) reduction
     RDP_EPSILON = 1e-4
@@ -1021,14 +1019,17 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
             
     # Create and save map
     folium.LayerControl().add_to(map_osm)
-    map_osm.save(HTML_FILENAME, close_file=False)
-    if platform.system() == "Darwin":
-        # On MAC
-        cwd = os.getcwd()
-        webbrowser.open("file://" + cwd + "/" + HTML_FILENAME)
-    elif platform.system() == 'Windows':
-        # On Windows
-        webbrowser.open(HTML_FILENAME, new=2)
+    map_osm.save(MAP_2D_FILENAME, close_file=False)
+    
+    # Open map in external browser
+    if showmap:
+        if platform.system() == "Darwin":
+            # On MAC
+            cwd = os.getcwd()
+            webbrowser.open("file://" + cwd + "/" + MAP_2D_FILENAME)
+        elif platform.system() == 'Windows':
+            # On Windows
+            webbrowser.open(MAP_2D_FILENAME, new=2)
         
     return
 
