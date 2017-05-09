@@ -6,7 +6,11 @@
 """
 """
 TODO
-- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto. Prospettiva strana...
+- Far corrispondere bene la texture con le coordinate, si vede dai percorsi su strada che è sballata
+- Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
+- Aggiungere opzione per settare un proxy dall'applicazione
+- Integrare la mappa 2D di OSM all'interno della GUI tramite un browser
+
 """
 
 import os
@@ -19,7 +23,8 @@ from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                             QListWidget, QListWidgetItem, QInputDialog, QAbstractItemView,
                             QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog,
                             QLineEdit, QFrame, QGridLayout)
-from qtpy import QtGui, QtCore#, QtWebEngineWidgets
+from qtpy import QtGui, QtCore, QtWebEngineWidgets
+# from qtpy import QtWebKit, QtWebKitWidgets
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -511,21 +516,22 @@ class MainWindow(QMainWindow):
                 self.plotEmbeddedDetails.clear_figure()
             
             # Generate html plot
-            # If only one track is selected, proceed with the complete output, otherwise just plot the traces
-            if len(self.gpxselectedlist) is 1:
-                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
-                                coords_array2_list=self.proc_coords_to_plot2,
-                                coords_palette = self.selectedpalette,
-                                tangentdata=None,
-                                balloondata_list=self.proc_balloondata,
-                                rdp_reduction=self.checkUseRDP.isChecked())
-            else:
-                bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
-                                coords_array2_list=None,
-                                coords_palette = self.selectedpalette,
-                                tangentdata=None,
-                                balloondata_list=self.proc_balloondata,
-                                rdp_reduction=self.checkUseRDP.isChecked())
+            if self.check2DMap.isChecked():
+                # If only one track is selected, proceed with the complete output, otherwise just plot the traces
+                if len(self.gpxselectedlist) is 1:
+                    bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                    coords_array2_list=self.proc_coords_to_plot2,
+                                    coords_palette = self.selectedpalette,
+                                    tangentdata=None,
+                                    balloondata_list=self.proc_balloondata,
+                                    rdp_reduction=self.checkUseRDP.isChecked())
+                else:
+                    bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
+                                    coords_array2_list=None,
+                                    coords_palette = self.selectedpalette,
+                                    tangentdata=None,
+                                    balloondata_list=self.proc_balloondata,
+                                    rdp_reduction=self.checkUseRDP.isChecked())
                 
             # Generate 3D plot
             if len(self.gpxselectedlist) == 1:
@@ -777,10 +783,15 @@ class MainWindow(QMainWindow):
         self.checkExtraSmooth.setChecked(False)
         vBox2.addWidget(self.checkExtraSmooth)
         
-        # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed on 2D map")
+        # 2D interactive map settings
+        hBox2DMap = QHBoxLayout()
+        self.check2DMap = QCheckBox("Plot interactive OSM")
+        self.check2DMap.setChecked(False)
+        hBox2DMap.addWidget(self.check2DMap)
+        self.checkUseRDP = QCheckBox("Use RDP to reduce points")
         self.checkUseRDP.setChecked(False)
-        vBox2.addWidget(self.checkUseRDP)
+        hBox2DMap.addWidget(self.checkUseRDP)   
+        vBox2.addLayout(hBox2DMap)
         
         line = QFrame()
         #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
@@ -903,7 +914,6 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab2.setLayout(vBox_tab)
         
-        """
         # Tab 4: html 2D map
         tab4 = QWidget()
         # The tab layout
@@ -911,13 +921,12 @@ class MainWindow(QMainWindow):
         vBox_tab.setSpacing(5)
         # Area
         self.browser = QtWebEngineWidgets.QWebEngineView()
-        self.browser.load(QtCore.QUrl("osm.html"))
+        self.browser.load(QtCore.QUrl("under_development/simplecode.html"))
         self.browser.show()
         # Add widgets to the layout
         vBox_tab.addWidget(self.browser)
         # Associate the layout to the tab
         tab4.setLayout(vBox_tab)
-        """
         
         # Tab 3: Details
         tab3 = QWidget()
@@ -938,7 +947,7 @@ class MainWindow(QMainWindow):
         # Associate tabs
         self.tab.addTab(tab1, "Summary")
         self.tab.addTab(tab2, "3D")
-        # self.tab.addTab(tab6, "Map")
+        self.tab.addTab(tab4, "Map")
         self.tab.addTab(tab3, "Details")
         
         hBox.addWidget(self.tab)
