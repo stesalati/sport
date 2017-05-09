@@ -37,9 +37,9 @@ from PIL import Image
 #import vtk
 from tvtk.api import tvtk
 #from tvtk.common import configure_input
-from traits.api import HasTraits, Instance#, on_trait_change
-from traitsui.api import View, Item
-from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+#from traits.api import HasTraits, Instance#, on_trait_change
+#from traitsui.api import View, Item
+#from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
 
 
@@ -842,7 +842,7 @@ def PlotOnMap(coords_array_list, coords_array2_list, coords_palette, tangentdata
     # Initialize map
     map_osm = folium.Map()
     folium.TileLayer('openstreetmap').add_to(map_osm)
-    folium.TileLayer('stamenterrain').add_to(map_osm)
+    #folium.TileLayer('stamenterrain').add_to(map_osm)
     
     # See what's in the list
     for icoords_array, coords_array in enumerate(coords_array_list):
@@ -1257,10 +1257,10 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
     
     # Selecting only a zone of the whole map, the one we're interested in plotting
     # Vertically inverted min and max as tiles are numbered, vertically, from north to south       
-    zone = {'x_min': int((lon_min - tile_lon_min)/gt[1]),
-            'x_size': int((lon_max - lon_min)/gt[1]),
-            'y_min': int((lat_max - tile_lat_max)/gt[5]),
-            'y_size': int((lat_min - lat_max)/gt[5])}
+    zone = {'x_min': int(np.round( (lon_min - tile_lon_min) / gt[1] )),
+            'x_size': int(np.round( (lon_max - lon_min) / gt[1] )),
+            'y_min': int(np.round( (lat_max - tile_lat_max) / gt[5] )),
+            'y_size': int(np.round( (lat_min - lat_max) / gt[5] ))}
     
     if verbose:
         print "\nSelected elevation zone:"
@@ -1268,18 +1268,25 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
         print "Latitude (Y):  Start: {}, Size: {}".format(zone['y_min'], zone['y_size'])
     
     # Read elevation data
-    zone_ele = tile_ele.ReadAsArray(zone['x_min'], zone['y_min'], zone['x_size'], zone['y_size']).astype(np.float)
+    array_ele = tile_ele.ReadAsArray(zone['x_min'], zone['y_min'], zone['x_size'], zone['y_size']).astype(np.float)
     
     # Set sea level at 0m instead of -32768 (Dead Sea level used as minimum value)
-    zone_ele[zone_ele < -418] = 0
+    array_ele[array_ele < -418] = 0
     
     # Create X,Y coordinates for zone_ele array
-    line_x_deg = np.arange(tile_lon_min+zone['x_min']*gt[1], tile_lon_min+(zone['x_min']+zone['x_size'])*gt[1], gt[1])[0:zone['x_size']]
-    array_x_deg = np.tile(line_x_deg, (len(zone_ele), 1)).transpose()
-    line_y_deg = np.arange(tile_lat_max+zone['y_min']*gt[5], tile_lat_max+(zone['y_min']+zone['y_size'])*gt[5], gt[5])[0:zone['y_size']]
-    array_y_deg = np.tile(line_y_deg, (len(zone_ele[0]), 1))
+    line_x_deg = np.arange(tile_lon_min + zone['x_min'] * gt[1], tile_lon_min + (zone['x_min'] + zone['x_size']) * gt[1], gt[1])[0:zone['x_size']]
+    array_x_deg = np.tile(line_x_deg, (len(array_ele), 1)).transpose()
+    line_y_deg = np.arange(tile_lat_max + zone['y_min'] * gt[5], tile_lat_max + (zone['y_min'] + zone['y_size']) * gt[5], gt[5])[0:zone['y_size']]
+    array_y_deg = np.tile(line_y_deg, (len(array_ele[0]), 1))
+    """
+    # In theory, that's the same as this, but the rounding issues are less with the above implementation
+    line_x_deg = np.arange(lon_min, lon_max, gt[1])[0:zone['x_size']]
+    array_x_deg = np.tile(line_x_deg, (len(array_ele), 1)).transpose()
+    line_y_deg = np.arange(lat_max, lat_min, gt[5])[0:zone['y_size']]
+    array_y_deg = np.tile(line_y_deg, (len(array_ele[0]), 1))
+    """
     
-    return zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, zone_ele, gt, warnings
+    return zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_ele, gt, warnings
     
 
 def Generate3DMap(track_lat, track_lon,
@@ -1400,6 +1407,7 @@ def Generate3DMap(track_lat, track_lon,
             width = a.size[0]
             
             # Method 1: with vectors
+            """
             h_coord_vector = np.linspace(osm_tiles_edges['lon_min'], osm_tiles_edges['lon_max'], width)
             h_min_idx, h_min_value = find_nearest(h_coord_vector, lon_min)
             h_max_idx, h_max_value = find_nearest(h_coord_vector, lon_max)
@@ -1412,19 +1420,30 @@ def Generate3DMap(track_lat, track_lon,
                             'right': int(h_max_idx),
                             'bottom': int(v_min_idx),
                             'top': int(v_max_idx)}
-            a_trimmed = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
-
             """
             # Method 2: operations
             h_deg2px_ratio = width / (osm_tiles_edges['lon_max'] - osm_tiles_edges['lon_min'])
             v_deg2px_ratio = height / (osm_tiles_edges['lat_max'] - osm_tiles_edges['lat_min'])
             
             trim_margins = {'left': int(np.round((lon_min - osm_tiles_edges['lon_min']) * h_deg2px_ratio)),
-                            'right': int(np.round((osm_tiles_edges['lon_max'] - lon_max) * h_deg2px_ratio)),
-                            'bottom': int(np.round((lat_min - osm_tiles_edges['lat_min']) * v_deg2px_ratio)),
-                            'top': int(np.round((osm_tiles_edges['lon_max'] - lat_max) * v_deg2px_ratio))}
-            a = a.crop((trim_margins['left'], trim_margins['top'], width-trim_margins['right'], height-trim_margins['bottom']))
+                            'right': int(np.round( width - (osm_tiles_edges['lon_max'] - lon_max) * h_deg2px_ratio )),
+                            'bottom': int(np.round( height - (lat_min - osm_tiles_edges['lat_min']) * v_deg2px_ratio )),
+                            'top': int(np.round((osm_tiles_edges['lat_max'] - lat_max) * v_deg2px_ratio))}
+            # print "Left: {}\nRight: {}\nBottom: {}\nTop: {}".format(trim_margins['left'], trim_margins['right'], trim_margins['bottom'], trim_margins['top'])
+            
+            # Shifting the texture, conceptually not right
             """
+            h_shift = 7
+            v_shift = 12
+            trim_margins['left'] = trim_margins['left'] - h_shift
+            trim_margins['right'] = trim_margins['right'] - h_shift
+            trim_margins['top'] = trim_margins['top'] - v_shift
+            trim_margins['bottom'] = trim_margins['bottom'] - v_shift
+            """
+            # print "Horizontal shift: {}deg".format(h_shift / h_deg2px_ratio)
+            # print "Vertical shift: {}deg".format(v_shift / v_deg2px_ratio)
+                        
+            a_trimmed = a.crop((trim_margins['left'], trim_margins['top'], trim_margins['right'], trim_margins['bottom']))
             
             # BUG TODO
             # The image is processed and saved correctly but sometimes it's displayed
@@ -1455,7 +1474,7 @@ def Generate3DMap(track_lat, track_lon,
         track_y_m.append(y)
         track_x_deg.append(track_lon[i] * COORDS_MAPPING_SCALE)
         track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
-        zz = array_z[int(round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
+        zz = array_z[int(np.round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(np.round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
         track_z_m.append(zz)
         track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
        
