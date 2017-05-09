@@ -266,9 +266,11 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug
     # Smoothing
     state_means, state_vars = kf.smooth(measurements)
     
+    """
     # Saving
     sio.savemat("kalman_output.mat", {'state_means':state_means,
                                       'state_vars':state_vars})
+    """
     
     # Analize variance and remove points whose variance is too high. It works
     # in principle, but the problem comes when the majority of points that are
@@ -498,6 +500,7 @@ def PlotSpeedVariance(ax, state_means, state_vars):
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
     ax.grid(True)    
     return ax, (distance, variance_speed)
+
 
 #==============================================================================
 # Homemade processing functions
