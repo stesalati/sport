@@ -6,7 +6,11 @@
 """
 """
 TODO
-- Capire perché le aree quadrate vengono rappresentate come dei rettangoli in mayavi, e storte quando le si guarda dall'alto. Prospettiva strana...
+- Far corrispondere bene la texture con le coordinate, si vede dai percorsi su strada che è sballata
+- Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
+- Aggiungere opzione per settare un proxy dall'applicazione
+- Integrare la mappa 2D di OSM all'interno della GUI tramite un browser
+- Vedere se affinare lo smoothing dopo il filtro di Kalman o lasciar perdere ed eliminare il codice commentato
 """
 
 import os
@@ -20,6 +24,7 @@ from qtpy.QtWidgets import (QMainWindow, QWidget, QApplication, qApp, QAction,
                             QTreeView, QSpinBox, QDoubleSpinBox, QPushButton, QDialog,
                             QLineEdit, QFrame, QGridLayout)
 from qtpy import QtGui, QtCore, QtWebEngineWidgets
+# from qtpy import QtWebKit, QtWebKitWidgets
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -47,8 +52,9 @@ import sip
 # the following lines are executed before the import of PyQT:
 #   import sip
 #   sip.setapi('QString', 2)
-from traits.api import HasTraits, Instance, on_trait_change
+from traits.api import HasTraits, Instance#, on_trait_change
 from traitsui.api import View, Item
+from tvtk.api import tvtk
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
 import bombo as bombo
@@ -74,6 +80,10 @@ Plots
 http://stackoverflow.com/questions/36350771/matplotlib-crosshair-cursor-in-pyqt-dialog-does-not-show-up
 http://stackoverflow.com/questions/35414003/python-how-can-i-display-cursor-on-all-axes-vertically-but-only-on-horizontall
 http://matplotlib.org/users/annotations.html
+
+Web browser
+https://wiki.python.org/moin/PyQt/Embedding%20Widgets%20in%20Web%20Pages
+http://stackoverflow.com/questions/37124944/qwebview-troubling-with-loading-html-in-pyqt4
 """
 
 FONTSIZE = 8
@@ -275,18 +285,43 @@ class Visualization(HasTraits):
         
         # Here's were I embedded my code
         self.scene.mlab.clf()
-        self.scene.mlab.mesh(terrain['x'], terrain['y'], terrain['z'])
-        self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0])/2, terrain['y'][0][0], np.max(terrain['z']) + 100,
-                               "NORTH", scale=(track['textsize'], track['textsize'], track['textsize']))
-        """
-        self.scene.mlab.text3d(track['x'][0], track['y'][0], track['z'][0] + 100,
-                               "START", scale=(track['textsize'], track['textsize'], track['textsize']))
-        """
-        self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
-                               color=track['color'],
-                               line_width=track['line_width'],
-                               tube_radius=track['tube_radius'])
-
+        
+        # Plot the elevation mesh
+        elevation_mesh = self.scene.mlab.mesh(terrain['x'],
+                                              terrain['y'],
+                                              terrain['z'])
+        
+        # Read and apply texture
+        bmp = tvtk.PNGReader(file_name=bombo.TEXTURE_FILE)
+        texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
+        elevation_mesh.actor.actor.mapper.scalar_visibility=False
+        elevation_mesh.actor.enable_texture = True
+        elevation_mesh.actor.tcoord_generator_mode = 'plane'
+        elevation_mesh.actor.actor.texture = texture
+        
+        # Display path nodes
+        if len(track['x']) == 1:
+            track_line = self.scene.mlab.points3d(track['x'], track['y'], track['z'],
+                                                  color=track['color'], mode='sphere', scale_factor=track['line_radius']*10)
+        else:
+            track_line = self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
+                                                color=track['color'], line_width=10.0, tube_radius=track['line_radius'])
+        
+        # Display north text
+        north_label = self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
+                                             terrain['y'][0][0],
+                                             np.max(terrain['z']),
+                                             "NORTH",
+                                             scale=(track['textsize'], track['textsize'], track['textsize']))
+        
+        # Displaying start test
+        if len(track['x']) > 1:
+            start_label = self.scene.mlab.text3d(track['x'][0],
+                                                 track['y'][0],
+                                                 track['z'][0] * 1.5,
+                                                 "START",
+                                                 scale=(track['textsize'], track['textsize'], track['textsize']))
+        
     # the layout of the dialog screated
     view = View(Item('scene',
                      editor=SceneEditor(scene_class=MayaviScene),
@@ -484,36 +519,49 @@ class MainWindow(QMainWindow):
                 self.plotEmbeddedElevationAndSpeed.clear_figure()
                 self.plotEmbeddedDetails.clear_figure()
             
-            # Generate html plot
-            # If only one track is selected, proceed with the complete output, otherwise just plot the traces
+            # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
                 bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
                                 coords_array2_list=self.proc_coords_to_plot2,
                                 coords_palette = self.selectedpalette,
                                 tangentdata=None,
                                 balloondata_list=self.proc_balloondata,
-                                rdp_reduction=self.checkUseRDP.isChecked())
+                                rdp_reduction=self.checkUseRDP.isChecked(),
+                                showmap=bool(self.check2DMapInExternalBrowser.isChecked()))
             else:
                 bombo.PlotOnMap(coords_array_list=self.proc_coords_to_plot,
                                 coords_array2_list=None,
                                 coords_palette = self.selectedpalette,
                                 tangentdata=None,
                                 balloondata_list=self.proc_balloondata,
-                                rdp_reduction=self.checkUseRDP.isChecked())
+                                rdp_reduction=self.checkUseRDP.isChecked(),
+                                showmap=bool(self.check2DMapInExternalBrowser.isChecked()))
+            
+            self.map2d.load(QtCore.QUrl(bombo.MAP_2D_FILENAME))
+            self.map2d.show()
                 
-            # Generate 3D plot
+            # Generate 3D plot, only with one track for the moment
             if len(self.gpxselectedlist) == 1:
                 if self.check3DMapSelection.isChecked():
                     tile_selection = 'auto'
                 else:
                     tile_selection = self.text3DMapName.text()
-                terrain, track, warnings = bombo.PlotOnMap3D(new_coords['lat'], new_coords['lon'],
-                                                             tile_selection=tile_selection,
-                                                             margin=self.spinbox3DMargin.value(),
-                                                             elevation_scale=self.spinbox3DElevationScale.value())
+                terrain, track, warnings = bombo.Generate3DMap(new_coords['lat'], new_coords['lon'],
+                                                               tile_selection=tile_selection,
+                                                               margin=self.spinbox3DMargin.value(),
+                                                               elevation_scale=self.spinbox3DElevationScale.value(),
+                                                               mapping='coords',
+                                                               use_osm_texture=True,
+                                                               texture_type='osm',
+                                                               texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                               texture_invert=self.check3DOSMInvert.isChecked(),
+                                                               verbose=False)
+                
                 self.textWarningConsole.append(warnings)
+                
                 if terrain is not None:    
                     self.map3d.update_plot(terrain, track)
+            
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
         return
@@ -529,19 +577,28 @@ class MainWindow(QMainWindow):
                 self.settings.setValue("last_point_coord_lat", QtCore.QVariant(self.spinboxLatDec.value()))
                 self.settings.setValue("last_point_coord_lon", QtCore.QVariant(self.spinboxLonDec.value()))
             
-            # Select the 3D tab
-            self.tab.setCurrentIndex(1)
+            # Select the 3D Map tab
+            self.tab.setCurrentIndex(2)
             
             # Plot
             if self.check3DMapSelection.isChecked():
                 tile_selection = 'auto'
             else:
                 tile_selection = self.text3DMapName.text()
-            terrain, track, warnings = bombo.PlotOnMap3D([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
-                                                          tile_selection=tile_selection,
-                                                          margin=self.spinbox3DMargin.value(),
-                                                          elevation_scale=self.spinbox3DElevationScale.value())
+            
+            terrain, track, warnings = bombo.Generate3DMap([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
+                                                           tile_selection=tile_selection,
+                                                           margin=self.spinbox3DMargin.value(),
+                                                           elevation_scale=self.spinbox3DElevationScale.value(),
+                                                           mapping='coords',
+                                                           use_osm_texture=True,
+                                                           texture_type='osm',
+                                                           texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                           texture_invert=self.check3DOSMInvert.isChecked(),
+                                                           verbose=False)
+            
             self.textWarningConsole.append(warnings)
+            
             if terrain is not None:    
                 self.map3d.update_plot(terrain, track)
             d.done(0)
@@ -679,7 +736,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(showpoint)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(24,24))
+        toolbar.setIconSize(QtCore.QSize(30,30))
                 
         # Status bar
         self.statusBar().show()
@@ -734,10 +791,15 @@ class MainWindow(QMainWindow):
         self.checkExtraSmooth.setChecked(False)
         vBox2.addWidget(self.checkExtraSmooth)
         
-        # Use/don't reduction algorithm for plotting on the map
-        self.checkUseRDP = QCheckBox("Use RDP to reduce number of points displayed on 2D map")
+        # 2D interactive map settings
+        hBox2DMap = QHBoxLayout()
+        self.checkUseRDP = QCheckBox("Use RDP to reduce points")
         self.checkUseRDP.setChecked(False)
-        vBox2.addWidget(self.checkUseRDP)
+        hBox2DMap.addWidget(self.checkUseRDP)   
+        self.check2DMapInExternalBrowser = QCheckBox("Show in external browser")
+        self.check2DMapInExternalBrowser.setChecked(False)
+        hBox2DMap.addWidget(self.check2DMapInExternalBrowser)
+        vBox2.addLayout(hBox2DMap)
         
         line = QFrame()
         #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
@@ -763,19 +825,39 @@ class MainWindow(QMainWindow):
         hBox3D.addWidget(label3DMargin)
         self.spinbox3DMargin = QSpinBox()
         self.spinbox3DMargin.setRange(50,1000)
+        self.spinbox3DMargin.setValue(100)
         self.spinbox3DMargin.setSingleStep(10)
         hBox3D.addWidget(self.spinbox3DMargin)
+        
         labelSpace = QLabel('  ')
         hBox3D.addWidget(labelSpace)
-        label3DElevationScale = QLabel('Elevation scale')
+        
+        label3DElevationScale = QLabel('Elev. scale')
         hBox3D.addWidget(label3DElevationScale)
         self.spinbox3DElevationScale = QDoubleSpinBox()
         self.spinbox3DElevationScale.setRange(1,50)
         self.spinbox3DElevationScale.setSingleStep(0.1)
         hBox3D.addWidget(self.spinbox3DElevationScale)
+        
+        hBox3D.addWidget(labelSpace)
+        
+        label3DOSMZoom = QLabel('Zoom')
+        hBox3D.addWidget(label3DOSMZoom)
+        self.spinbox3DOSMZoom = QSpinBox()
+        self.spinbox3DOSMZoom.setRange(8,15)
+        self.spinbox3DOSMZoom.setValue(13)
+        self.spinbox3DOSMZoom.setSingleStep(1)
+        hBox3D.addWidget(self.spinbox3DOSMZoom)
+        
+        hBox3D.addWidget(labelSpace)
+        
+        self.check3DOSMInvert = QCheckBox("Invert")
+        self.check3DOSMInvert.setChecked(False)
+        hBox3D.addWidget(self.check3DOSMInvert)
         vBox2.addLayout(hBox3D)
         
         vBox_left.addLayout(vBox2)
+        
         
         # 3rd stats tree
         self.tree = QTreeView()
@@ -829,8 +911,20 @@ class MainWindow(QMainWindow):
         # Associate the layout to the tab
         tab1.setLayout(vBox_tab)
         
-        # Tab 2: 3D plot
+        # Tab 2: html 2D map
         tab2 = QWidget()
+        # The tab layout
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
+        # Area
+        self.map2d = QtWebEngineWidgets.QWebEngineView()
+        # Add widgets to the layout
+        vBox_tab.addWidget(self.map2d)
+        # Associate the layout to the tab
+        tab2.setLayout(vBox_tab)
+        
+        # Tab 3: 3D plot
+        tab3 = QWidget()
         # The tab layout
         vBox_tab = QVBoxLayout()
         vBox_tab.setSpacing(5)
@@ -839,26 +933,10 @@ class MainWindow(QMainWindow):
         # Add widgets to the layout
         vBox_tab.addWidget(self.map3d)
         # Associate the layout to the tab
-        tab2.setLayout(vBox_tab)
+        tab3.setLayout(vBox_tab)
         
-        """
-        # Tab 4: html 2D map
+        # Tab 4: Details
         tab4 = QWidget()
-        # The tab layout
-        vBox_tab = QVBoxLayout()
-        vBox_tab.setSpacing(5)
-        # Area
-        self.browser = QtWebEngineWidgets.QWebEngineView()
-        self.browser.load(QtCore.QUrl("osm.html"))
-        self.browser.show()
-        # Add widgets to the layout
-        vBox_tab.addWidget(self.browser)
-        # Associate the layout to the tab
-        tab4.setLayout(vBox_tab)
-        """
-        
-        # Tab 3: Details
-        tab3 = QWidget()
         # The tab layout
         vBox_tab = QVBoxLayout()
         vBox_tab.setSpacing(5)
@@ -871,13 +949,13 @@ class MainWindow(QMainWindow):
         vBox_tab.addWidget(self.plotEmbeddedDetails)
         vBox_tab.addWidget(self.mpl_toolbar2)
         # Associate the layout to the tab
-        tab3.setLayout(vBox_tab)
+        tab4.setLayout(vBox_tab)
                 
         # Associate tabs
         self.tab.addTab(tab1, "Summary")
-        self.tab.addTab(tab2, "3D")
-        # self.tab.addTab(tab6, "Map")
-        self.tab.addTab(tab3, "Details")
+        self.tab.addTab(tab2, "2D Map")
+        self.tab.addTab(tab3, "3D Map")
+        self.tab.addTab(tab4, "Details")
         
         hBox.addWidget(self.tab)
         
