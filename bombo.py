@@ -71,11 +71,9 @@ http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothi
 https://github.com/balzer82/Kalman
 """
 
-
 #==============================================================================
 # Constants
 #==============================================================================
-FONTSIZE = 8 # pt
 PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
 KALMAN_N_ITERATIONS = 5
