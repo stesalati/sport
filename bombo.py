@@ -85,11 +85,12 @@ TRACE_SIZE_ON_3DMAP = 50.0
 ELEVATION_DATA_FOLDER = "elevationdata/"
 OSM_DATA_FOLDER = "map_tiles/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
-USE_PROXY = False
-PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 COORDS_MAPPING_SCALE = 10000
 COORDS_MAPPING_ZSCALE = 0.1
 TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
+
+USE_PROXY = False
+PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
 #==============================================================================
 # Kalman processing functions
@@ -1107,7 +1108,7 @@ https://algorithmia.com/algorithms/Gaploid/Elevation -> a pagamento
 http://stackoverflow.com/questions/11504444/raster-how-to-get-elevation-at-lat-long-using-python
 http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation-difference-between-two-points
 """
-def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=False, proxy_data="", verbose=False):
+def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=USE_PROXY, proxy_data=PROXY_DATA, verbose=False):
     
     def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
       lat_rad = math.radians(lat_deg)
@@ -1302,6 +1303,7 @@ def Generate3DMap(track_lat, track_lon,
                   elevation_scale=1.0,
                   mapping='coords',
                   use_osm_texture=True, texture_type='osm', texture_zoom=13, texture_invert=False,
+                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
                   verbose=False):
     
     def degrees2metersLongX(latitude, longitudeSpan):
@@ -1388,7 +1390,7 @@ def Generate3DMap(track_lat, track_lon,
             a, osm_tiles_edges, osm_warnings = GetOSMImageCluster(lat_deg=lat_min, lon_deg=lon_min,
                                                                   delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
                                                                   zoom=texture_zoom,
-                                                                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                                                                  use_proxy=use_proxy, proxy_data=proxy_data,
                                                                   verbose=verbose)
             warnings = warnings + osm_warnings
             
