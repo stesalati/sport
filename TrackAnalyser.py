@@ -6,10 +6,7 @@
 """
 """
 TODO
-- Far corrispondere bene la texture con le coordinate, si vede dai percorsi su strada che è sballata
 - Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
-- Aggiungere opzione per settare un proxy dall'applicazione
-- Integrare la mappa 2D di OSM all'interno della GUI tramite un browser
 - Vedere se affinare lo smoothing dopo il filtro di Kalman o lasciar perdere ed eliminare il codice commentato
 """
 
@@ -349,7 +346,6 @@ class MainWindow(QMainWindow):
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
-        # print "Last used directory: {}\n".format(old_directory)
         
         # Check if the setting exists
         if old_directory is not None:
@@ -555,6 +551,8 @@ class MainWindow(QMainWindow):
                                                                texture_type='osm',
                                                                texture_zoom=self.spinbox3DOSMZoom.value(),
                                                                texture_invert=self.check3DOSMInvert.isChecked(),
+                                                               use_proxy=self.use_proxy,
+                                                               proxy_data=self.proxy_config,
                                                                verbose=False)
                 
                 self.textWarningConsole.append(warnings)
@@ -595,6 +593,8 @@ class MainWindow(QMainWindow):
                                                            texture_type='osm',
                                                            texture_zoom=self.spinbox3DOSMZoom.value(),
                                                            texture_invert=self.check3DOSMInvert.isChecked(),
+                                                           use_proxy=self.use_proxy,
+                                                           proxy_data=self.proxy_config,
                                                            verbose=False)
             
             self.textWarningConsole.append(warnings)
@@ -659,6 +659,54 @@ class MainWindow(QMainWindow):
         d.setWindowModality(QtCore.Qt.ApplicationModal)
         d.exec_()
         
+    def ProxyDialog(self):
+        
+        def SetProxy():
+            self.use_proxy = bool(self.checkUseProxy.isChecked())
+            self.proxy_config = self.textProxyConfig.text()
+            
+            if os.environ['QT_API'] == 'pyqt':
+                self.settings.setValue("use_proxy", self.use_proxy)
+                self.settings.setValue("proxy_config", str(self.proxy_config))
+            elif os.environ['QT_API'] == 'pyqt5':
+                self.settings.setValue("use_proxy", QtCore.QVariant(self.use_proxy))
+                self.settings.setValue("proxy_config", QtCore.QVariant(str(self.proxy_config)))
+                
+            d.done(0)
+            
+        d = QDialog()
+        
+        box = QVBoxLayout()
+        
+        hBox_proxy = QHBoxLayout()
+        hBox_proxy.setSpacing(5)
+        label = QLabel('Proxy')
+        hBox_proxy.addWidget(label)
+        self.textProxyConfig = QLineEdit()
+        try:
+            self.textProxyConfig.setText(self.settings.value('proxy_config', str))
+        except:
+            self.textProxyConfig.setText(bombo.PROXY_DATA)
+        self.textProxyConfig.setMinimumWidth(200)
+        hBox_proxy.addWidget(self.textProxyConfig)
+        box.addLayout(hBox_proxy)
+        
+        self.checkUseProxy = QCheckBox("Use proxy")
+        try:
+            self.checkUseProxy.setChecked(self.settings.value('use_proxy', bool))
+        except:
+            self.checkUseProxy.setChecked(bool(bombo.USE_PROXY))
+        box.addWidget(self.checkUseProxy)
+        
+        button = QPushButton("Save configuration")
+        button.clicked.connect(SetProxy)
+        box.addWidget(button)
+
+        d.setWindowTitle("Proxy configuration")
+        d.setLayout(box)
+        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        d.exec_()
+        
     def __init__(self, parent=None):
         super(MainWindow, self).__init__()
         self.initVariables()
@@ -703,7 +751,17 @@ class MainWindow(QMainWindow):
         QtCore.QCoreApplication.setOrganizationName("Ste")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
         QtCore.QCoreApplication.setApplicationName("TrackAnalyser")
+        
+        # Config settings
         self.settings = QtCore.QSettings(self)
+        
+        # Proxy settings
+        try:
+            self.use_proxy = self.settings.value('use_proxy', bool)
+            self.proxy_config = self.settings.value('proxy_config', str)
+        except:
+            self.use_proxy = bombo.USE_PROXY
+            self.proxy_config = bombo.PROXY_DATA
         
         # Actions
         openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
@@ -729,11 +787,21 @@ class MainWindow(QMainWindow):
         quitapp.setStatusTip("Quit application")
         quitapp.triggered.connect(qApp.quit)
         
+        configs = QAction(QtGui.QIcon("icons/configs.png"), "Configs", self)
+        configs.setStatusTip("Configs")
+        configs.triggered.connect(self.ProxyDialog)
+        
+        # Menubar
+        mainMenu = self.menuBar()
+        configMenu = mainMenu.addMenu('&Config')
+        configMenu.addAction(configs)
+        
         # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(showpoint)
+        toolbar.addAction(sep)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QtCore.QSize(30,30))
