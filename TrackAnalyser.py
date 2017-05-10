@@ -83,7 +83,11 @@ https://wiki.python.org/moin/PyQt/Embedding%20Widgets%20in%20Web%20Pages
 http://stackoverflow.com/questions/37124944/qwebview-troubling-with-loading-html-in-pyqt4
 """
 
-FONTSIZE = 8
+#==============================================================================
+# Constants
+#==============================================================================
+FONTSIZE = 9
+
 
 class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
@@ -746,6 +750,13 @@ class MainWindow(QMainWindow):
                 self.gpxselectedlist.append(self.gpxlist[i.row()])
                 self.gpxselectednamelist.append(self.gpxnamelist[i.row()])
                 self.selectedpalette.append(self.palette[i.row()])
+                
+        def ClearSelectedItemsInTree():
+            root = self.treemodel.invisibleRootItem()
+            # for item in self.treemodel.selectedItems():
+            for item in self.tree.selectedIndexes():
+                pass
+                #(item.parent() or root).removeChild(item)
 
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Ste")
@@ -942,6 +953,10 @@ class MainWindow(QMainWindow):
         #index2 = self.treemodel.indexFromItem(child2)
         #selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
         vBox_left.addWidget(self.tree)
+        
+        buttonClearTree = QPushButton("Clear selected")
+        buttonClearTree.clicked.connect(ClearSelectedItemsInTree)
+        vBox_left.addWidget(buttonClearTree)
         
         # 4th text, containing text messages/errors
         self.textWarningConsole = QTextEdit()
