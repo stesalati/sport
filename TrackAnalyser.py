@@ -751,13 +751,28 @@ class MainWindow(QMainWindow):
                 self.gpxselectednamelist.append(self.gpxnamelist[i.row()])
                 self.selectedpalette.append(self.palette[i.row()])
                 
-        def ClearSelectedItemsInTree():
+        def ClearStats():
+            """
+            # Some other code that could be used in the future
+            index = self.treemodel.indexFromItem(parent1)
+            self.tree.expand(index)
+            selmod = self.tree.selectionModel()
+            index2 = self.treemodel.indexFromItem(child2)
+            selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
+            
             root = self.treemodel.invisibleRootItem()
-            # for item in self.treemodel.selectedItems():
-            for item in self.tree.selectedIndexes():
-                pass
-                #(item.parent() or root).removeChild(item)
-
+            (item.parent() or root).removeChild(item)
+            """
+            # Returns a list of indexes. In our case, for each row there are 2 indexes, cos there are 2 columns.
+            for index in self.tree.selectedIndexes():  
+                # Consider only the first columns
+                if index.column() == 0:
+                    # Need to check if it's a top item (i.e. track), otherwise if a subitem (i.e. distance or time) is selected, the result might be buggy
+                    parent = index.parent()
+                    parent_item = self.treemodel.itemFromIndex(parent)
+                    if parent_item is None:
+                        self.treemodel.removeRow(index.row())
+        
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Ste")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
@@ -785,13 +800,21 @@ class MainWindow(QMainWindow):
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
+        clearstats = QAction(QtGui.QIcon("icons/clear.png"), "Clear stats", self)
+        clearstats.setShortcut("Ctrl+C")
+        clearstats.setStatusTip("Clear stats")
+        clearstats.triggered.connect(ClearStats)
+        
+        sep1 = QAction(self)
+        sep1.setSeparator(True)
+        
         showpoint = QAction(QtGui.QIcon("icons/point.png"), "Show point", self)
         showpoint.setShortcut("Ctrl+P")
         showpoint.setStatusTip("Show point")
         showpoint.triggered.connect(self.PlotSpecificAreaDialog)
         
-        sep = QAction(self)
-        sep.setSeparator(True)
+        sep2 = QAction(self)
+        sep2.setSeparator(True)
         
         quitapp = QAction(QtGui.QIcon("icons/quit.png"), "Quit", self)
         quitapp.setShortcut("Ctrl+Q")
@@ -811,8 +834,10 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
+        toolbar.addAction(clearstats)
+        toolbar.addAction(sep1)
         toolbar.addAction(showpoint)
-        toolbar.addAction(sep)
+        toolbar.addAction(sep2)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QtCore.QSize(30,30))
@@ -880,13 +905,13 @@ class MainWindow(QMainWindow):
         hBox2DMap.addWidget(self.check2DMapInExternalBrowser)
         vBox2.addLayout(hBox2DMap)
         
-        line = QFrame()
-        #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        vBox2.addWidget(line)
-        
         # Settings for the 3D map
+        line3DViewSettings = QFrame()
+        #line3DViewSettings.setGeometry(QtCore.QRect(320, 150, 118, 3))
+        line3DViewSettings.setFrameShape(QFrame.HLine)
+        line3DViewSettings.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(line3DViewSettings)
+        
         label3DViewSettings = QLabel('3D view settings')
         vBox2.addWidget(label3DViewSettings)
         
@@ -936,9 +961,15 @@ class MainWindow(QMainWindow):
         vBox2.addLayout(hBox3D)
         
         vBox_left.addLayout(vBox2)
-        
-        
+                
         # 3rd stats tree
+        lineTree = QFrame()
+        lineTree.setFrameShape(QFrame.HLine)
+        lineTree.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(lineTree)
+        labelTree = QLabel('Track stats')
+        vBox2.addWidget(labelTree)
+        
         self.tree = QTreeView()
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.treemodel = QtGui.QStandardItemModel()
@@ -946,17 +977,7 @@ class MainWindow(QMainWindow):
         self.tree.setModel(self.treemodel)
         self.tree.setUniformRowHeights(True)
         self.tree.setColumnWidth(0, 200)
-        
-        #index = self.treemodel.indexFromItem(parent1)
-        #self.tree.expand(index)
-        #selmod = self.tree.selectionModel()
-        #index2 = self.treemodel.indexFromItem(child2)
-        #selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
         vBox_left.addWidget(self.tree)
-        
-        buttonClearTree = QPushButton("Clear selected")
-        buttonClearTree.clicked.connect(ClearSelectedItemsInTree)
-        vBox_left.addWidget(buttonClearTree)
         
         # 4th text, containing text messages/errors
         self.textWarningConsole = QTextEdit()
@@ -1071,7 +1092,7 @@ def main():
     
     main.show()
     
-    # I added this line to rpevent the app from crashing on exit. The app was
+    # I added this line to prevent the app from crashing on exit. The app was
     # closing fine when I was using pyqt4 and pyqt5 but started crashing when
     # I started using qtpy. This makes me think that my code is fine but
     # the way qtpy is implemented causes random behaviours on exit. After
