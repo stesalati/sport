@@ -79,13 +79,13 @@ METHOD_2_MAX_GAP = 2 # seconds
 KALMAN_N_ITERATIONS = 5
 
 MAP_2D_FILENAME = "osm.html"
-TRACE_SIZE_ON_3DMAP = 50.0
-ELEVATION_DATA_FOLDER = "elevationdata/"
-OSM_DATA_FOLDER = "map_tiles/"
+OSM_DATA_FOLDER = "maps/osm/"
+TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
+ELEVATION_DATA_FOLDER = "maps/srtm/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
+TRACE_SIZE_ON_3DMAP = 50.0
 COORDS_MAPPING_SCALE = 10000
 COORDS_MAPPING_ZSCALE = 0.1
-TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
 
 USE_PROXY = False
 PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
@@ -1222,7 +1222,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
                     for tile_y in tiles_y:
                         # Generate tile filename and append it to the list
                         tilename = "srtm_{:02d}_{:02d}".format(tile_x, tile_y)
-                        filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+                        filename = ELEVATION_DATA_FOLDER + "{}.tif".format(tilename)
                         gdal_merge_command_list.append(filename)
                         if not os.path.isfile(filename):
                             warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
@@ -1235,7 +1235,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
         else:
             # Only one tile is needed
             tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
-            filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+            filename = ELEVATION_DATA_FOLDER + "{}.tif".format(tilename)
             if not os.path.isfile(filename):
                 warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                 print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
