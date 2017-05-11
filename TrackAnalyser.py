@@ -916,7 +916,7 @@ class MainWindow(QMainWindow):
         vBox2.addWidget(label3DViewSettings)
         
         hBox3DMapSelection = QHBoxLayout()
-        self.check3DMapSelection = QCheckBox("Select tiles automatically, otherwise")
+        self.check3DMapSelection = QCheckBox("Select elevation tiles automatically, otherwise")
         self.check3DMapSelection.setChecked(True)
         hBox3DMapSelection.addWidget(self.check3DMapSelection)
         self.text3DMapName = QLineEdit()
