@@ -10,9 +10,5 @@
 # Pyc
 *.pyc
 
-# Elevation data folder
-elevationdata/*/*.txt
-elevationdata/*/*.hdr
-elevationdata/*/*.tfw
-elevationdata/*/*.tif
-elevationdata/*.tif
+# Maps
+maps/srtm/*.tif

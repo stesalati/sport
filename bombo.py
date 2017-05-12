@@ -71,25 +71,25 @@ http://stats.stackexchange.com/questions/49300/how-does-one-apply-kalman-smoothi
 https://github.com/balzer82/Kalman
 """
 
-
 #==============================================================================
 # Constants
 #==============================================================================
-FONTSIZE = 8 # pt
 PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
 KALMAN_N_ITERATIONS = 5
 
+TRACKS_FOLDER = "tracks/"
 MAP_2D_FILENAME = "osm.html"
-TRACE_SIZE_ON_3DMAP = 50.0
-ELEVATION_DATA_FOLDER = "elevationdata/"
-OSM_DATA_FOLDER = "map_tiles/"
+OSM_DATA_FOLDER = "maps/osm/"
+TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
+ELEVATION_DATA_FOLDER = "maps/srtm/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
-USE_PROXY = False
-PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
+TRACE_SIZE_ON_3DMAP = 50.0
 COORDS_MAPPING_SCALE = 10000
 COORDS_MAPPING_ZSCALE = 0.1
-TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
+
+USE_PROXY = False
+PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
 #==============================================================================
 # Kalman processing functions
@@ -694,13 +694,18 @@ def MergeAllTracksAndSegmentsFromGPX(igpx):
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     segment = gpx.tracks[track_nr].segments[segment_nr]
+    
+    # Creating a Pandas dataframe with the GPX data.
+    # If time is missing (strange, but can happen), just fake it with 1 second per sample starting from 01/01/2000
+    # If elevation is missing, set it at 0m
     coords = pd.DataFrame([
             {'idx': i,
              'lat': p.latitude,
              'lon': p.longitude,
-             'ele': p.elevation,
-             'time': p.time,
-             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(segment.points)])
+             'ele': p.elevation if p.elevation is not None else 0,
+             'time': p.time if p.time is not None else (datetime.datetime(2000,1,1,0,0,0) + datetime.timedelta(0,i)),
+             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds() if p.time is not None else (datetime.datetime(2000,1,1,0,0,0) + datetime.timedelta(0,i)) } for i, p in enumerate(segment.points)])
+    
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
@@ -770,11 +775,17 @@ def GiveStats(segment):
     dinfos['idle_time'] = "{:2.0f}:{:2.0f}:{:2.0f}".format(h, m, s)
     dinfos['idle_distance'] = "{:.3f}km".format(info[3]/1000.0)
     
-    info = segment.get_elevation_extremes()
-    dinfos['elevation'] = "{:.0f}m <-> {:.0f}m".format(info[0], info[1])
+    if segment.has_elevations():
+        info = segment.get_elevation_extremes()
+        dinfos['elevation'] = "{:.0f}m <-> {:.0f}m".format(info[0], info[1])
+    else:
+        dinfos['elevation'] = "NA"
     
-    info = segment.get_uphill_downhill()
-    dinfos['climb'] = "+{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    if segment.has_elevations():
+        info = segment.get_uphill_downhill()
+        dinfos['climb'] = "+{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    else:
+        dinfos['climb'] = "NA"
     
     return dinfos
 
@@ -1107,7 +1118,7 @@ https://algorithmia.com/algorithms/Gaploid/Elevation -> a pagamento
 http://stackoverflow.com/questions/11504444/raster-how-to-get-elevation-at-lat-long-using-python
 http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation-difference-between-two-points
 """
-def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=False, proxy_data="", verbose=False):
+def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=USE_PROXY, proxy_data=PROXY_DATA, verbose=False):
     
     def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
       lat_rad = math.radians(lat_deg)
@@ -1223,7 +1234,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
                     for tile_y in tiles_y:
                         # Generate tile filename and append it to the list
                         tilename = "srtm_{:02d}_{:02d}".format(tile_x, tile_y)
-                        filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+                        filename = ELEVATION_DATA_FOLDER + "{}.tif".format(tilename)
                         gdal_merge_command_list.append(filename)
                         if not os.path.isfile(filename):
                             warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
@@ -1236,7 +1247,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
         else:
             # Only one tile is needed
             tilename = "srtm_{:02d}_{:02d}".format(tiles_x[0], tiles_y[0])
-            filename = ELEVATION_DATA_FOLDER + "{}/{}.tif".format(tilename, tilename)
+            filename = ELEVATION_DATA_FOLDER + "{}.tif".format(tilename)
             if not os.path.isfile(filename):
                 warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                 print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
@@ -1302,6 +1313,7 @@ def Generate3DMap(track_lat, track_lon,
                   elevation_scale=1.0,
                   mapping='coords',
                   use_osm_texture=True, texture_type='osm', texture_zoom=13, texture_invert=False,
+                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
                   verbose=False):
     
     def degrees2metersLongX(latitude, longitudeSpan):
@@ -1388,7 +1400,7 @@ def Generate3DMap(track_lat, track_lon,
             a, osm_tiles_edges, osm_warnings = GetOSMImageCluster(lat_deg=lat_min, lon_deg=lon_min,
                                                                   delta_lat=(lat_max-lat_min), delta_long=(lon_max-lon_min),
                                                                   zoom=texture_zoom,
-                                                                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                                                                  use_proxy=use_proxy, proxy_data=proxy_data,
                                                                   verbose=verbose)
             warnings = warnings + osm_warnings
             
@@ -1482,17 +1494,10 @@ def Generate3DMap(track_lat, track_lon,
         track_x_deg.append(track_lon[i] * COORDS_MAPPING_SCALE)
         track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
         zz = array_z[int(np.round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(np.round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
-        track_z_m.append(zz)
-        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
+        track_z_m.append(zz * elevation_scale)
+        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE * elevation_scale)
        
     # Creating the export dictionaries
-    
-    # TODO
-    # This bit is intrisically WRONG: I want map_elements to be returned even though the plot
-    # is not requested, so I can export directly mesh, points and labels instead of values to generate
-    # them. Unfortunately, for the moment I've got no idea how, so I just do this. It needs to be
-    # corrected in the future though.
-    
     if mapping == 'meters':
         terrain = {'x': array_x_m, 
                    'y': array_y_m,
