@@ -269,14 +269,14 @@ class MayaviQWidget(QWidget):
         self.ui.setParent(self)
     
     # I created this function to call the visualization.update_plot function, that is part of the Visualization class
-    def update_plot(self, terrain, track):
-        self.visualization.update_plot(terrain, track)
+    def update_plot(self, terrain, track, use_osm_texture):
+        self.visualization.update_plot(terrain, track, use_osm_texture)
         
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
 
     #@on_trait_change('scene.activated')
-    def update_plot(self, terrain, track):
+    def update_plot(self, terrain, track, use_osm_texture=False):
         # This function is called when the view is opened. We don't
         # populate the scene when the view is not yet open, as some
         # VTK features require a GLContext.
@@ -292,13 +292,14 @@ class Visualization(HasTraits):
                                               terrain['y'],
                                               terrain['z'])
         
-        # Read and apply texture
-        bmp = tvtk.PNGReader(file_name=bombo.TEXTURE_FILE)
-        texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
-        elevation_mesh.actor.actor.mapper.scalar_visibility=False
-        elevation_mesh.actor.enable_texture = True
-        elevation_mesh.actor.tcoord_generator_mode = 'plane'
-        elevation_mesh.actor.actor.texture = texture
+        if use_osm_texture:
+			# Read and apply texture
+			bmp = tvtk.PNGReader(file_name=bombo.TEXTURE_FILE)
+			texture = tvtk.Texture(input_connection=bmp.output_port, interpolate=1)
+			elevation_mesh.actor.actor.mapper.scalar_visibility=False
+			elevation_mesh.actor.enable_texture = True
+			elevation_mesh.actor.tcoord_generator_mode = 'plane'
+			elevation_mesh.actor.actor.texture = texture
         
         # Display path nodes
         if len(track['x']) == 1:
@@ -551,7 +552,7 @@ class MainWindow(QMainWindow):
                                                                margin=self.spinbox3DMargin.value(),
                                                                elevation_scale=self.spinbox3DElevationScale.value(),
                                                                mapping='coords',
-                                                               use_osm_texture=True,
+                                                               use_osm_texture=self.check3DUseOSM.isChecked(),
                                                                texture_type='osm',
                                                                texture_zoom=self.spinbox3DOSMZoom.value(),
                                                                texture_invert=self.check3DOSMInvert.isChecked(),
@@ -562,7 +563,7 @@ class MainWindow(QMainWindow):
                 self.textWarningConsole.append(warnings)
                 
                 if terrain is not None:    
-                    self.map3d.update_plot(terrain, track)
+                    self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
             
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
@@ -593,7 +594,7 @@ class MainWindow(QMainWindow):
                                                            margin=self.spinbox3DMargin.value(),
                                                            elevation_scale=self.spinbox3DElevationScale.value(),
                                                            mapping='coords',
-                                                           use_osm_texture=True,
+                                                           use_osm_texture=self.check3DUseOSM.isChecked(),
                                                            texture_type='osm',
                                                            texture_zoom=self.spinbox3DOSMZoom.value(),
                                                            texture_invert=self.check3DOSMInvert.isChecked(),
@@ -604,7 +605,7 @@ class MainWindow(QMainWindow):
             self.textWarningConsole.append(warnings)
             
             if terrain is not None:    
-                self.map3d.update_plot(terrain, track)
+                self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
             d.done(0)
             
         def Convert():
@@ -666,9 +667,11 @@ class MainWindow(QMainWindow):
     def ProxyDialog(self):
         
         def SetProxy():
+        	# Setting program variable
             self.use_proxy = bool(self.checkUseProxy.isChecked())
             self.proxy_config = self.textProxyConfig.text()
             
+            # Setting non-volatile configuration
             if os.environ['QT_API'] == 'pyqt':
                 self.settings.setValue("use_proxy", self.use_proxy)
                 self.settings.setValue("proxy_config", str(self.proxy_config))
@@ -686,11 +689,13 @@ class MainWindow(QMainWindow):
         hBox_proxy.setSpacing(5)
         label = QLabel('Proxy')
         hBox_proxy.addWidget(label)
+        
+        # First try to re-read the non-volatile configuration, if it fails, then back up on program variable
         self.textProxyConfig = QLineEdit()
         try:
             self.textProxyConfig.setText(self.settings.value('proxy_config', str))
         except:
-            self.textProxyConfig.setText(bombo.PROXY_DATA)
+            self.textProxyConfig.setText(self.proxy_config)
         self.textProxyConfig.setMinimumWidth(200)
         hBox_proxy.addWidget(self.textProxyConfig)
         box.addLayout(hBox_proxy)
@@ -699,7 +704,7 @@ class MainWindow(QMainWindow):
         try:
             self.checkUseProxy.setChecked(self.settings.value('use_proxy', bool))
         except:
-            self.checkUseProxy.setChecked(bool(bombo.USE_PROXY))
+            self.checkUseProxy.setChecked(self.use_proxy)
         box.addWidget(self.checkUseProxy)
         
         button = QPushButton("Save configuration")
@@ -785,9 +790,11 @@ class MainWindow(QMainWindow):
         try:
             self.use_proxy = self.settings.value('use_proxy', bool)
             self.proxy_config = self.settings.value('proxy_config', str)
+            print "Proxy setting loaded: {}, {}".format(self.use_proxy, self.proxy_config)
         except:
             self.use_proxy = bombo.USE_PROXY
             self.proxy_config = bombo.PROXY_DATA
+            print "Proxy setting not found, loading default: {}, {}".format(self.use_proxy, self.proxy_config)
         
         # Actions
         openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
@@ -826,21 +833,22 @@ class MainWindow(QMainWindow):
         configs.triggered.connect(self.ProxyDialog)
         
         # Menubar
-        mainMenu = self.menuBar()
-        configMenu = mainMenu.addMenu('&Config')
-        configMenu.addAction(configs)
+        # mainMenu = self.menuBar()
+        # configMenu = mainMenu.addMenu('&Config')
+        # configMenu.addAction(configs)
         
         # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
         toolbar.addAction(clearstats)
+        toolbar.addAction(configs)
         toolbar.addAction(sep1)
         toolbar.addAction(showpoint)
         toolbar.addAction(sep2)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(30,30))
+        toolbar.setIconSize(QtCore.QSize(36,36))
                 
         # Status bar
         self.statusBar().show()
@@ -924,41 +932,55 @@ class MainWindow(QMainWindow):
         hBox3DMapSelection.addWidget(self.text3DMapName)
         vBox2.addLayout(hBox3DMapSelection)
         
-        hBox3D = QHBoxLayout()
+        hBox3D1 = QHBoxLayout()
         label3DMargin = QLabel('Margin')
-        hBox3D.addWidget(label3DMargin)
+        hBox3D1.addWidget(label3DMargin)
         self.spinbox3DMargin = QSpinBox()
         self.spinbox3DMargin.setRange(50,1000)
         self.spinbox3DMargin.setValue(100)
         self.spinbox3DMargin.setSingleStep(10)
-        hBox3D.addWidget(self.spinbox3DMargin)
+        hBox3D1.addWidget(self.spinbox3DMargin)
         
         labelSpace = QLabel('  ')
-        hBox3D.addWidget(labelSpace)
+        hBox3D1.addWidget(labelSpace)
         
         label3DElevationScale = QLabel('Elev. scale')
-        hBox3D.addWidget(label3DElevationScale)
+        hBox3D1.addWidget(label3DElevationScale)
         self.spinbox3DElevationScale = QDoubleSpinBox()
         self.spinbox3DElevationScale.setRange(1,50)
         self.spinbox3DElevationScale.setSingleStep(0.1)
-        hBox3D.addWidget(self.spinbox3DElevationScale)
+        hBox3D1.addWidget(self.spinbox3DElevationScale)
         
-        hBox3D.addWidget(labelSpace)
+        vBox2.addLayout(hBox3D1)
         
-        label3DOSMZoom = QLabel('Zoom')
-        hBox3D.addWidget(label3DOSMZoom)
+        hBox3D2 = QHBoxLayout()
+        self.check3DUseOSM = QCheckBox("Use OSM overlay")
+        self.check3DUseOSM.setChecked(True)
+        hBox3D2.addWidget(self.check3DUseOSM)
+        
+        hBox3D2.addWidget(labelSpace)
+        
+        label3DOSMZoom = QLabel('OSM zoom')
+        hBox3D2.addWidget(label3DOSMZoom)
         self.spinbox3DOSMZoom = QSpinBox()
         self.spinbox3DOSMZoom.setRange(8,15)
         self.spinbox3DOSMZoom.setValue(13)
         self.spinbox3DOSMZoom.setSingleStep(1)
-        hBox3D.addWidget(self.spinbox3DOSMZoom)
+        hBox3D2.addWidget(self.spinbox3DOSMZoom)
         
-        hBox3D.addWidget(labelSpace)
+        hBox3D2.addWidget(labelSpace)
         
-        self.check3DOSMInvert = QCheckBox("Invert")
+        self.check3DOSMInvert = QCheckBox("Invert OSM")
         self.check3DOSMInvert.setChecked(False)
-        hBox3D.addWidget(self.check3DOSMInvert)
-        vBox2.addLayout(hBox3D)
+        hBox3D2.addWidget(self.check3DOSMInvert)
+        
+        vBox2.addLayout(hBox3D2)
+        
+        
+        
+        
+        
+        
         
         vBox_left.addLayout(vBox2)
                 
