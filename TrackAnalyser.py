@@ -357,14 +357,14 @@ class MainWindow(QMainWindow):
             if old_directory:
                 old_directory = old_directory
             else:
-                old_directory = "tracks"
+                old_directory = bombo.TRACKS_FOLDER
         else:
-            old_directory = "tracks"
+            old_directory = bombo.TRACKS_FOLDER
         
         # Open the dialog box
         fullfilename_list = QFileDialog.getOpenFileNames(self,
                                                          'Open .gpx',
-                                                         "tracks",
+                                                         old_directory,
                                                          "GPX files (*.gpx)")
         if os.environ['QT_API'] == 'pyqt':
             pass
