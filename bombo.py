@@ -78,6 +78,7 @@ PLOT_FONTSIZE = 9 # pt
 METHOD_2_MAX_GAP = 2 # seconds
 KALMAN_N_ITERATIONS = 5
 
+TRACKS_FOLDER = "tracks/"
 MAP_2D_FILENAME = "osm.html"
 OSM_DATA_FOLDER = "maps/osm/"
 TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
@@ -693,13 +694,18 @@ def MergeAllTracksAndSegmentsFromGPX(igpx):
             
 def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
     segment = gpx.tracks[track_nr].segments[segment_nr]
+    
+    # Creating a Pandas dataframe with the GPX data.
+    # If time is missing (strange, but can happen), just fake it with 1 second per sample starting from 01/01/2000
+    # If elevation is missing, set it at 0m
     coords = pd.DataFrame([
             {'idx': i,
              'lat': p.latitude,
              'lon': p.longitude,
-             'ele': p.elevation,
-             'time': p.time,
-             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(segment.points)])
+             'ele': p.elevation if p.elevation is not None else 0,
+             'time': p.time if p.time is not None else (datetime.datetime(2000,1,1,0,0,0) + datetime.timedelta(0,i)),
+             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds() if p.time is not None else (datetime.datetime(2000,1,1,0,0,0) + datetime.timedelta(0,i)) } for i, p in enumerate(segment.points)])
+    
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
     
@@ -769,11 +775,17 @@ def GiveStats(segment):
     dinfos['idle_time'] = "{:2.0f}:{:2.0f}:{:2.0f}".format(h, m, s)
     dinfos['idle_distance'] = "{:.3f}km".format(info[3]/1000.0)
     
-    info = segment.get_elevation_extremes()
-    dinfos['elevation'] = "{:.0f}m <-> {:.0f}m".format(info[0], info[1])
+    if segment.has_elevations():
+        info = segment.get_elevation_extremes()
+        dinfos['elevation'] = "{:.0f}m <-> {:.0f}m".format(info[0], info[1])
+    else:
+        dinfos['elevation'] = "NA"
     
-    info = segment.get_uphill_downhill()
-    dinfos['climb'] = "+{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    if segment.has_elevations():
+        info = segment.get_uphill_downhill()
+        dinfos['climb'] = "+{:.0f}m, -{:.0f}m".format(info[0], info[1])
+    else:
+        dinfos['climb'] = "NA"
     
     return dinfos
 
@@ -1482,17 +1494,10 @@ def Generate3DMap(track_lat, track_lon,
         track_x_deg.append(track_lon[i] * COORDS_MAPPING_SCALE)
         track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
         zz = array_z[int(np.round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(np.round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
-        track_z_m.append(zz)
-        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE)
+        track_z_m.append(zz * elevation_scale)
+        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE * elevation_scale)
        
     # Creating the export dictionaries
-    
-    # TODO
-    # This bit is intrisically WRONG: I want map_elements to be returned even though the plot
-    # is not requested, so I can export directly mesh, points and labels instead of values to generate
-    # them. Unfortunately, for the moment I've got no idea how, so I just do this. It needs to be
-    # corrected in the future though.
-    
     if mapping == 'meters':
         terrain = {'x': array_x_m, 
                    'y': array_y_m,
