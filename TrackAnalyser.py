@@ -6,10 +6,7 @@
 """
 """
 TODO
-- Far corrispondere bene la texture con le coordinate, si vede dai percorsi su strada che è sballata
 - Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
-- Aggiungere opzione per settare un proxy dall'applicazione
-- Integrare la mappa 2D di OSM all'interno della GUI tramite un browser
 - Vedere se affinare lo smoothing dopo il filtro di Kalman o lasciar perdere ed eliminare il codice commentato
 """
 
@@ -86,7 +83,11 @@ https://wiki.python.org/moin/PyQt/Embedding%20Widgets%20in%20Web%20Pages
 http://stackoverflow.com/questions/37124944/qwebview-troubling-with-loading-html-in-pyqt4
 """
 
-FONTSIZE = 8
+#==============================================================================
+# Constants
+#==============================================================================
+FONTSIZE = 9
+
 
 class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
@@ -349,7 +350,6 @@ class MainWindow(QMainWindow):
         
         # Try to recover the last used directory
         old_directory = self.settings.value("lastdirectory", str)
-        # print "Last used directory: {}\n".format(old_directory)
         
         # Check if the setting exists
         if old_directory is not None:
@@ -357,14 +357,14 @@ class MainWindow(QMainWindow):
             if old_directory:
                 old_directory = old_directory
             else:
-                old_directory = "tracks"
+                old_directory = bombo.TRACKS_FOLDER
         else:
-            old_directory = "tracks"
+            old_directory = bombo.TRACKS_FOLDER
         
         # Open the dialog box
         fullfilename_list = QFileDialog.getOpenFileNames(self,
                                                          'Open .gpx',
-                                                         "tracks",
+                                                         old_directory,
                                                          "GPX files (*.gpx)")
         if os.environ['QT_API'] == 'pyqt':
             pass
@@ -555,6 +555,8 @@ class MainWindow(QMainWindow):
                                                                texture_type='osm',
                                                                texture_zoom=self.spinbox3DOSMZoom.value(),
                                                                texture_invert=self.check3DOSMInvert.isChecked(),
+                                                               use_proxy=self.use_proxy,
+                                                               proxy_data=self.proxy_config,
                                                                verbose=False)
                 
                 self.textWarningConsole.append(warnings)
@@ -595,6 +597,8 @@ class MainWindow(QMainWindow):
                                                            texture_type='osm',
                                                            texture_zoom=self.spinbox3DOSMZoom.value(),
                                                            texture_invert=self.check3DOSMInvert.isChecked(),
+                                                           use_proxy=self.use_proxy,
+                                                           proxy_data=self.proxy_config,
                                                            verbose=False)
             
             self.textWarningConsole.append(warnings)
@@ -659,6 +663,54 @@ class MainWindow(QMainWindow):
         d.setWindowModality(QtCore.Qt.ApplicationModal)
         d.exec_()
         
+    def ProxyDialog(self):
+        
+        def SetProxy():
+            self.use_proxy = bool(self.checkUseProxy.isChecked())
+            self.proxy_config = self.textProxyConfig.text()
+            
+            if os.environ['QT_API'] == 'pyqt':
+                self.settings.setValue("use_proxy", self.use_proxy)
+                self.settings.setValue("proxy_config", str(self.proxy_config))
+            elif os.environ['QT_API'] == 'pyqt5':
+                self.settings.setValue("use_proxy", QtCore.QVariant(self.use_proxy))
+                self.settings.setValue("proxy_config", QtCore.QVariant(str(self.proxy_config)))
+                
+            d.done(0)
+            
+        d = QDialog()
+        
+        box = QVBoxLayout()
+        
+        hBox_proxy = QHBoxLayout()
+        hBox_proxy.setSpacing(5)
+        label = QLabel('Proxy')
+        hBox_proxy.addWidget(label)
+        self.textProxyConfig = QLineEdit()
+        try:
+            self.textProxyConfig.setText(self.settings.value('proxy_config', str))
+        except:
+            self.textProxyConfig.setText(bombo.PROXY_DATA)
+        self.textProxyConfig.setMinimumWidth(200)
+        hBox_proxy.addWidget(self.textProxyConfig)
+        box.addLayout(hBox_proxy)
+        
+        self.checkUseProxy = QCheckBox("Use proxy")
+        try:
+            self.checkUseProxy.setChecked(self.settings.value('use_proxy', bool))
+        except:
+            self.checkUseProxy.setChecked(bool(bombo.USE_PROXY))
+        box.addWidget(self.checkUseProxy)
+        
+        button = QPushButton("Save configuration")
+        button.clicked.connect(SetProxy)
+        box.addWidget(button)
+
+        d.setWindowTitle("Proxy configuration")
+        d.setLayout(box)
+        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        d.exec_()
+        
     def __init__(self, parent=None):
         super(MainWindow, self).__init__()
         self.initVariables()
@@ -698,12 +750,44 @@ class MainWindow(QMainWindow):
                 self.gpxselectedlist.append(self.gpxlist[i.row()])
                 self.gpxselectednamelist.append(self.gpxnamelist[i.row()])
                 self.selectedpalette.append(self.palette[i.row()])
-
+                
+        def ClearStats():
+            """
+            # Some other code that could be used in the future
+            index = self.treemodel.indexFromItem(parent1)
+            self.tree.expand(index)
+            selmod = self.tree.selectionModel()
+            index2 = self.treemodel.indexFromItem(child2)
+            selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
+            
+            root = self.treemodel.invisibleRootItem()
+            (item.parent() or root).removeChild(item)
+            """
+            # Returns a list of indexes. In our case, for each row there are 2 indexes, cos there are 2 columns.
+            for index in self.tree.selectedIndexes():  
+                # Consider only the first columns
+                if index.column() == 0:
+                    # Need to check if it's a top item (i.e. track), otherwise if a subitem (i.e. distance or time) is selected, the result might be buggy
+                    parent = index.parent()
+                    parent_item = self.treemodel.itemFromIndex(parent)
+                    if parent_item is None:
+                        self.treemodel.removeRow(index.row())
+        
         # Application Settings
         QtCore.QCoreApplication.setOrganizationName("Ste")
         QtCore.QCoreApplication.setOrganizationDomain("https://github.com/stesalati/sport/")
         QtCore.QCoreApplication.setApplicationName("TrackAnalyser")
+        
+        # Config settings
         self.settings = QtCore.QSettings(self)
+        
+        # Proxy settings
+        try:
+            self.use_proxy = self.settings.value('use_proxy', bool)
+            self.proxy_config = self.settings.value('proxy_config', str)
+        except:
+            self.use_proxy = bombo.USE_PROXY
+            self.proxy_config = bombo.PROXY_DATA
         
         # Actions
         openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
@@ -716,24 +800,44 @@ class MainWindow(QMainWindow):
         go.setStatusTip("Run analysis")
         go.triggered.connect(self.Go)
         
+        clearstats = QAction(QtGui.QIcon("icons/clear.png"), "Clear stats", self)
+        clearstats.setShortcut("Ctrl+C")
+        clearstats.setStatusTip("Clear stats")
+        clearstats.triggered.connect(ClearStats)
+        
+        sep1 = QAction(self)
+        sep1.setSeparator(True)
+        
         showpoint = QAction(QtGui.QIcon("icons/point.png"), "Show point", self)
         showpoint.setShortcut("Ctrl+P")
         showpoint.setStatusTip("Show point")
         showpoint.triggered.connect(self.PlotSpecificAreaDialog)
         
-        sep = QAction(self)
-        sep.setSeparator(True)
+        sep2 = QAction(self)
+        sep2.setSeparator(True)
         
         quitapp = QAction(QtGui.QIcon("icons/quit.png"), "Quit", self)
         quitapp.setShortcut("Ctrl+Q")
         quitapp.setStatusTip("Quit application")
         quitapp.triggered.connect(qApp.quit)
         
+        configs = QAction(QtGui.QIcon("icons/configs.png"), "Configs", self)
+        configs.setStatusTip("Configs")
+        configs.triggered.connect(self.ProxyDialog)
+        
+        # Menubar
+        mainMenu = self.menuBar()
+        configMenu = mainMenu.addMenu('&Config')
+        configMenu.addAction(configs)
+        
         # Toolbar
         toolbar = self.addToolBar('My tools')
         toolbar.addAction(openfile)
         toolbar.addAction(go)
+        toolbar.addAction(clearstats)
+        toolbar.addAction(sep1)
         toolbar.addAction(showpoint)
+        toolbar.addAction(sep2)
         toolbar.addAction(quitapp)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         toolbar.setIconSize(QtCore.QSize(30,30))
@@ -801,18 +905,18 @@ class MainWindow(QMainWindow):
         hBox2DMap.addWidget(self.check2DMapInExternalBrowser)
         vBox2.addLayout(hBox2DMap)
         
-        line = QFrame()
-        #line.setGeometry(QtCore.QRect(320, 150, 118, 3))
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        vBox2.addWidget(line)
-        
         # Settings for the 3D map
+        line3DViewSettings = QFrame()
+        #line3DViewSettings.setGeometry(QtCore.QRect(320, 150, 118, 3))
+        line3DViewSettings.setFrameShape(QFrame.HLine)
+        line3DViewSettings.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(line3DViewSettings)
+        
         label3DViewSettings = QLabel('3D view settings')
         vBox2.addWidget(label3DViewSettings)
         
         hBox3DMapSelection = QHBoxLayout()
-        self.check3DMapSelection = QCheckBox("Select tiles automatically, otherwise")
+        self.check3DMapSelection = QCheckBox("Select elevation tiles automatically, otherwise")
         self.check3DMapSelection.setChecked(True)
         hBox3DMapSelection.addWidget(self.check3DMapSelection)
         self.text3DMapName = QLineEdit()
@@ -857,9 +961,15 @@ class MainWindow(QMainWindow):
         vBox2.addLayout(hBox3D)
         
         vBox_left.addLayout(vBox2)
-        
-        
+                
         # 3rd stats tree
+        lineTree = QFrame()
+        lineTree.setFrameShape(QFrame.HLine)
+        lineTree.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(lineTree)
+        labelTree = QLabel('Track stats')
+        vBox2.addWidget(labelTree)
+        
         self.tree = QTreeView()
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.treemodel = QtGui.QStandardItemModel()
@@ -867,12 +977,6 @@ class MainWindow(QMainWindow):
         self.tree.setModel(self.treemodel)
         self.tree.setUniformRowHeights(True)
         self.tree.setColumnWidth(0, 200)
-        
-        #index = self.treemodel.indexFromItem(parent1)
-        #self.tree.expand(index)
-        #selmod = self.tree.selectionModel()
-        #index2 = self.treemodel.indexFromItem(child2)
-        #selmod.select(index2, QtCore.QItemSelectionModel.Select|QtCore.QItemSelectionModel.Rows)
         vBox_left.addWidget(self.tree)
         
         # 4th text, containing text messages/errors
@@ -988,7 +1092,7 @@ def main():
     
     main.show()
     
-    # I added this line to rpevent the app from crashing on exit. The app was
+    # I added this line to prevent the app from crashing on exit. The app was
     # closing fine when I was using pyqt4 and pyqt5 but started crashing when
     # I started using qtpy. This makes me think that my code is fine but
     # the way qtpy is implemented causes random behaviours on exit. After
