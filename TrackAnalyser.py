@@ -541,29 +541,30 @@ class MainWindow(QMainWindow):
             self.map2d.load(QtCore.QUrl(bombo.MAP_2D_FILENAME))
             self.map2d.show()
                 
-            # Generate 3D plot, only with one track for the moment
-            if len(self.gpxselectedlist) == 1:
-                if self.check3DMapSelection.isChecked():
-                    tile_selection = 'auto'
-                else:
-                    tile_selection = self.text3DMapName.text()
-                terrain, track, warnings = bombo.Generate3DMap(new_coords['lat'], new_coords['lon'],
-                                                               tile_selection=tile_selection,
-                                                               margin=self.spinbox3DMargin.value(),
-                                                               elevation_scale=self.spinbox3DElevationScale.value(),
-                                                               mapping='coords',
-                                                               use_osm_texture=self.check3DUseOSM.isChecked(),
-                                                               texture_type='osm',
-                                                               texture_zoom=self.spinbox3DOSMZoom.value(),
-                                                               texture_invert=self.check3DOSMInvert.isChecked(),
-                                                               use_proxy=self.use_proxy,
-                                                               proxy_data=self.proxy_config,
-                                                               verbose=False)
-                
-                self.textWarningConsole.append(warnings)
-                
-                if terrain is not None:    
-                    self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
+            # Generate 3D plot, only with one track for the moment and only if it's activated obviously
+            if self.checkUse3DMap.isChecked():
+                if len(self.gpxselectedlist) == 1:
+                    if self.check3DMapSelection.isChecked():
+                        tile_selection = 'auto'
+                    else:
+                        tile_selection = self.text3DMapName.text()
+                    terrain, track, warnings = bombo.Generate3DMap(new_coords['lat'], new_coords['lon'],
+                                                                   tile_selection=tile_selection,
+                                                                   margin=self.spinbox3DMargin.value(),
+                                                                   elevation_scale=self.spinbox3DElevationScale.value(),
+                                                                   mapping='coords',
+                                                                   use_osm_texture=self.check3DUseOSM.isChecked(),
+                                                                   texture_type='osm',
+                                                                   texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                                   texture_invert=self.check3DOSMInvert.isChecked(),
+                                                                   use_proxy=self.use_proxy,
+                                                                   proxy_data=self.proxy_config,
+                                                                   verbose=False)
+                    
+                    self.textWarningConsole.append(warnings)
+                    
+                    if terrain is not None:    
+                        self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
             
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
@@ -690,21 +691,23 @@ class MainWindow(QMainWindow):
         label = QLabel('Proxy')
         hBox_proxy.addWidget(label)
         
-        # First try to re-read the non-volatile configuration, if it fails, then back up on program variable
+        # First to re-read the non-volatile configuration, if it fails, then back up on program variable
         self.textProxyConfig = QLineEdit()
         try:
-            self.textProxyConfig.setText(self.settings.value('proxy_config', str))
+            self.proxy_config = self.settings.value('proxy_config', str)
         except:
-            self.textProxyConfig.setText(self.proxy_config)
+            pass
+        self.textProxyConfig.setText(self.proxy_config)
         self.textProxyConfig.setMinimumWidth(200)
         hBox_proxy.addWidget(self.textProxyConfig)
         box.addLayout(hBox_proxy)
         
         self.checkUseProxy = QCheckBox("Use proxy")
         try:
-            self.checkUseProxy.setChecked(self.settings.value('use_proxy', bool))
+            self.use_proxy = bool(self.settings.value('use_proxy', bool))
         except:
-            self.checkUseProxy.setChecked(self.use_proxy)
+            pass
+        self.checkUseProxy.setChecked(self.use_proxy)
         box.addWidget(self.checkUseProxy)
         
         button = QPushButton("Save configuration")
@@ -726,7 +729,7 @@ class MainWindow(QMainWindow):
         self.gpxnamelist = list()
         self.gpxselectedlist = list()
         self.gpxselectednamelist = list()
-        self.palette = bombo.GeneratePalette(N=10) * 5 # replicated 5 times
+        self.palette = bombo.GeneratePalette(N=6) * 5 # replicated 5 times
         #self.palette = ["#0000FF", "#00FF00", "#00FFFF", "#FF0000", "#FF00FF", "#FFFF00", "#FFFFFF"] # test palette
         self.selectedpalette = list()
         
@@ -922,6 +925,10 @@ class MainWindow(QMainWindow):
         
         label3DViewSettings = QLabel('3D view settings')
         vBox2.addWidget(label3DViewSettings)
+        
+        self.checkUse3DMap = QCheckBox("Show 3D Map")
+        self.checkUse3DMap.setChecked(True)
+        vBox2.addWidget(self.checkUse3DMap)
         
         hBox3DMapSelection = QHBoxLayout()
         self.check3DMapSelection = QCheckBox("Select elevation tiles automatically, otherwise")
