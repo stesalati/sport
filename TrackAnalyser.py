@@ -904,7 +904,7 @@ class MainWindow(QMainWindow):
         vBox2.setSpacing(5)
         
         # Just the group label
-        labelSettings = QLabel('Settings')
+        labelSettings = QLabel('Processing settings')
         vBox2.addWidget(labelSettings)
         
         # Use/don't use corrected altitude
@@ -931,7 +931,16 @@ class MainWindow(QMainWindow):
         self.checkExtraSmooth.setChecked(False)
         vBox2.addWidget(self.checkExtraSmooth)
         
-        # 2D interactive map settings
+        # 2D map settings
+        line2DViewSettings = QFrame()
+        #line3DViewSettings.setGeometry(QtCore.QRect(320, 150, 118, 3))
+        line2DViewSettings.setFrameShape(QFrame.HLine)
+        line2DViewSettings.setFrameShadow(QFrame.Sunken)
+        vBox2.addWidget(line2DViewSettings)
+        
+        label2DViewSettings = QLabel('2D map settings')
+        vBox2.addWidget(label2DViewSettings)
+        
         hBox2DMap = QHBoxLayout()
         self.checkUseRDP = QCheckBox("Use RDP to reduce points")
         self.checkUseRDP.setChecked(False)
@@ -941,14 +950,14 @@ class MainWindow(QMainWindow):
         hBox2DMap.addWidget(self.check2DMapInExternalBrowser)
         vBox2.addLayout(hBox2DMap)
         
-        # Settings for the 3D map
+        # 3D map settings
         line3DViewSettings = QFrame()
         #line3DViewSettings.setGeometry(QtCore.QRect(320, 150, 118, 3))
         line3DViewSettings.setFrameShape(QFrame.HLine)
         line3DViewSettings.setFrameShadow(QFrame.Sunken)
         vBox2.addWidget(line3DViewSettings)
         
-        label3DViewSettings = QLabel('3D view settings')
+        label3DViewSettings = QLabel('3D map settings')
         vBox2.addWidget(label3DViewSettings)
         
         self.checkUse3DMap = QCheckBox("Show 3D Map")
