@@ -93,18 +93,18 @@ class MultiCursorLinkedToTrace(object):
     def __init__(self, ax1, x1, y1, ax2, x2, y2):
         # Axis 1
         self.ax1 = ax1
-        self.lx1 = ax1.axhline(linewidth=1, color='k', alpha=0.5, label="caccola")  # the horiz line
-        self.ly1 = ax1.axvline(linewidth=1, color='k', alpha=0.5)  # the vert line
+        self.lx1 = ax1.axhline(linewidth=1, color='w', alpha=0.5)  # the horiz line
+        self.ly1 = ax1.axvline(linewidth=1, color='w', alpha=0.5)  # the vert line
         self.x1 = x1
         self.y1 = y1
         # Axis 2
         self.ax2 = ax2
-        self.lx2 = ax2.axhline(linewidth=1, color='k', alpha=0.5)  # the horiz line
-        self.ly2 = ax2.axvline(linewidth=1, color='k', alpha=0.5)  # the vert line
+        self.lx2 = ax2.axhline(linewidth=1, color='w', alpha=0.5)  # the horiz line
+        self.ly2 = ax2.axvline(linewidth=1, color='w', alpha=0.5)  # the vert line
         self.x2 = x2
         self.y2 = y2
         # Annotation boxes
-        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1)
+        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="white", lw=1)
         self.txt1 = ax1.text(0, 0, "", alpha=0.5, bbox=bbox_props)
         self.txt2 = ax2.text(0, 0, "", alpha=0.5, bbox=bbox_props)
         
@@ -134,14 +134,31 @@ class MultiCursorLinkedToTrace(object):
             return
         plt.draw()
 
+def DarkAxis(axis):
+    axis.set_axis_bgcolor('black')
+    axis.spines['bottom'].set_color('white')
+    axis.spines['top'].set_color('white') 
+    axis.spines['right'].set_color('white')
+    axis.spines['left'].set_color('white')
+    axis.tick_params(axis='x', colors='white')
+    axis.tick_params(axis='y', colors='white')
+    axis.xaxis.label.set_color('white')
+    axis.yaxis.label.set_color('white')
+    axis.grid(color='white')
+    return axis
 
 class EmbeddedPlot_ElevationSpeed(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.top_axis = self.fig.add_subplot(211)
         self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
-        self.fig.set_facecolor("w")
+        
+        # Format
+        self.fig.set_facecolor("k")
         self.fig.set_tight_layout(True)
+        self.top_axis = DarkAxis(self.top_axis)
+        self.bottom_axis = DarkAxis(self.bottom_axis)
+        
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
         FigureCanvas.setSizePolicy(self,
@@ -175,13 +192,14 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.fig.set_tight_layout(True)
         self.draw()
         
-    def update_figure_multiple_tracks(self, measurements_list, state_means_list, gpx_list):
+    def update_figure_multiple_tracks(self, measurements_list, state_means_list, gpx_list, color_list):
         # Draw plots
         for i, measurements in enumerate(measurements_list):
             state_means = state_means_list[i]
+            color = color_list[i]
             gpx = gpx_list[i]
-            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
-            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, gpx.tracks[0].segments[0])
+            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means, clean_before=False, color=color)
+            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, gpx.tracks[0].segments[0], clean_before=False, color=color)
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
@@ -198,8 +216,16 @@ class EmbeddedPlot_Details(FigureCanvas):
         self.axis_elevation_variance = self.fig.add_subplot(235, sharex=self.axis_elevation)
         self.axis_speed_variance = self.fig.add_subplot(236, sharex=self.axis_elevation)
         
-        self.fig.set_facecolor("w")
+        # Format
+        self.fig.set_facecolor("k")
         self.fig.set_tight_layout(True)
+        self.axis_coords = DarkAxis(self.axis_coords)
+        self.axis_elevation = DarkAxis(self.axis_elevation)
+        self.axis_speed = DarkAxis(self.axis_speed)
+        self.axis_coords_variance = DarkAxis(self.axis_coords_variance)
+        self.axis_elevation_variance = DarkAxis(self.axis_elevation_variance)
+        self.axis_speed_variance = DarkAxis(self.axis_speed_variance)
+        
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
         FigureCanvas.setSizePolicy(self,
@@ -228,6 +254,7 @@ class EmbeddedPlot_Details(FigureCanvas):
         self.axis_speed_variance, tmp_speedvar = bombo.PlotSpeedVariance(self.axis_speed_variance, state_means, state_vars)
         
         # Add cursor
+        """
         def onclick(event):
             cursor_anchored2.mouse_move(event)
             cursor_anchored3.mouse_move(event)
@@ -243,6 +270,7 @@ class EmbeddedPlot_Details(FigureCanvas):
             cursor_anchored3 = MultiCursorLinkedToTrace(self.axis_speed, tmp_speed[0], tmp_speed[1],
                                                         self.axis_speed_variance, tmp_speedvar[0], tmp_speedvar[1])
             self.mpl_connect('motion_notify_event', onclick)
+        """
             
         # Draw
         self.fig.set_tight_layout(True)
@@ -505,20 +533,17 @@ class MainWindow(QMainWindow):
                 self.proc_coords_to_plot.append(np.vstack((new_coords['lat'], new_coords['lon'])).T)
                 self.proc_coords_to_plot2.append(np.vstack((coords['lat'], coords['lon'])).T)
                 self.proc_balloondata.append(balloondata)
-                
             
             # Restore original cursor
             QApplication.restoreOverrideCursor()
-            
+                        
             # Generate embedded plots
+            self.plotEmbeddedElevationAndSpeed.clear_figure()
+            self.plotEmbeddedElevationAndSpeed.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx, self.selectedpalette)
+            self.plotEmbeddedDetails.clear_figure()
             if len(self.gpxselectedlist) == 1:
-                self.plotEmbeddedElevationAndSpeed.update_figure(measurements, state_means, new_gpx.tracks[0].segments[0])
                 self.plotEmbeddedDetails.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
-            else:
-                # Commentato per adesso
-                # self.plotEmbeddedElevationAndSpeed.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx)
-                self.plotEmbeddedElevationAndSpeed.clear_figure()
-                self.plotEmbeddedDetails.clear_figure()
+                
             
             # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
@@ -982,12 +1007,6 @@ class MainWindow(QMainWindow):
         hBox3D2.addWidget(self.check3DOSMInvert)
         
         vBox2.addLayout(hBox3D2)
-        
-        
-        
-        
-        
-        
         
         vBox_left.addLayout(vBox2)
                 
