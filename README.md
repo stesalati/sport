@@ -14,6 +14,3 @@ TrackAnalyser is a small software, written in Python, to open, process and plot 
 * __maps/srtm__ is where elevation maps are stored. This folder must be populated manually (i.e. tiles need to be copy/pasted manually in this folder for the 3D elevation profile to be plotted): .tif SRTM files must be located for the software to find and use them. The usual path (mandatory for tiles that are loaded and merged automatically) is __srtm_XX_YY.tif__, files can be downloaded here: http://dwtkns.com/srtm/ or http://srtm.csi.cgiar.org/SELECTION/inputCoord.asp. Alternatively, tiles can also be used manually (e.g. "iceland.tif"), in this case the file name must be specified in TrackAnalyser.
 * __icons/__ is self-explanatory.
 * All other files are generated and auxiliary.
-
-## List of the required Python modules
-numpy, scipy, matplotlib, re, gpxpy, datetime, mplleaflet, os, folium, webbrowser, vincent, json, sys, pykalman, srtm, pandas, platform, rdp, colorsys, osgeo.gdal, math, mayavi.mlab, qtpy, pyqt4, traits.api, traitsui.api, ctypes, sip
