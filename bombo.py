@@ -41,8 +41,6 @@ from tvtk.api import tvtk
 #from traitsui.api import View, Item
 #from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
 
-
-
 import StringIO
 import urllib2#, urllib
 #from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
@@ -88,8 +86,8 @@ TRACE_SIZE_ON_3DMAP = 50.0
 COORDS_MAPPING_SCALE = 10000
 COORDS_MAPPING_ZSCALE = 0.1
 
-USE_PROXY = False
-PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
+DEFAULT_USE_PROXY = False
+DEFAULT_PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
 #==============================================================================
 # Kalman processing functions
@@ -1123,7 +1121,7 @@ https://algorithmia.com/algorithms/Gaploid/Elevation -> a pagamento
 http://stackoverflow.com/questions/11504444/raster-how-to-get-elevation-at-lat-long-using-python
 http://gis.stackexchange.com/questions/59316/python-script-for-getting-elevation-difference-between-two-points
 """
-def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=USE_PROXY, proxy_data=PROXY_DATA, verbose=False):
+def GetOSMImageCluster(lat_deg, lon_deg, delta_lat, delta_long, zoom=13, use_proxy=DEFAULT_USE_PROXY, proxy_data=DEFAULT_PROXY_DATA, verbose=False):
     
     def MapTilesDeg2Num(lat_deg, lon_deg, zoom):
       lat_rad = math.radians(lat_deg)
@@ -1318,7 +1316,7 @@ def Generate3DMap(track_lat, track_lon,
                   elevation_scale=1.0,
                   mapping='coords',
                   use_osm_texture=True, texture_type='osm', texture_zoom=13, texture_invert=False,
-                  use_proxy=USE_PROXY, proxy_data=PROXY_DATA,
+                  use_proxy=DEFAULT_USE_PROXY, proxy_data=DEFAULT_PROXY_DATA,
                   verbose=False):
     
     def degrees2metersLongX(latitude, longitudeSpan):
