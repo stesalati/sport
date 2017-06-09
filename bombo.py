@@ -92,7 +92,7 @@ DEFAULT_PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
-def ApplyKalmanFilter(coords, gpx, method, use_acceleration, extra_smooth, debug_plot):    
+def ApplyKalmanFilter(coords, gpx, method, use_acceleration=False, extra_smooth=False, debug_plot=False):    
     HTML_FILENAME = "osm_kalman.html"
     dinfos = {}
     
@@ -695,7 +695,7 @@ def MergeAllTracksAndSegmentsFromGPX(igpx):
                                                                                  time=point.time))
     return ogpx
             
-def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
+def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation=False):
     segment = gpx.tracks[track_nr].segments[segment_nr]
     
     # Creating a Pandas dataframe with the GPX data.
@@ -724,9 +724,10 @@ def ParseGPX(gpx, track_nr, segment_nr, use_srtm_elevation):
                 
             # Get elevation from SRTM
             elevation_data = srtm.get_data()
+            
+            # Add it to both the gpx object and coords
             elevation_data.add_elevations(gpx, smooth=True)
-            coords['srtm'] = [p.elevation for p in gpx.tracks[0].segments[0].points]
-            coords[['ele','srtm']].plot(title='Elevation')  
+            coords['ele'] = [p.elevation for p in gpx.tracks[0].segments[0].points]
         except:
             warnings = "SRTM correction failed for some reason, probably a shitty proxy.\n"
     

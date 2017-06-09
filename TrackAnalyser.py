@@ -866,17 +866,22 @@ class MainWindow(QMainWindow):
         # configMenu.addAction(configs)
         
         # Toolbar
-        toolbar = self.addToolBar('My tools')
-        toolbar.addAction(openfile)
-        toolbar.addAction(go)
-        toolbar.addAction(clearstats)
-        toolbar.addAction(configs)
-        toolbar.addAction(sep1)
-        toolbar.addAction(showpoint)
-        toolbar.addAction(sep2)
-        toolbar.addAction(quitapp)
-        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QtCore.QSize(36,36))
+        self.toolbar = self.addToolBar('My tools')
+        self.toolbar.addAction(openfile)
+        self.toolbar.addAction(go)
+        self.toolbar.addAction(clearstats)
+        self.toolbar.addAction(configs)
+        self.toolbar.addAction(sep1)
+        self.toolbar.addAction(showpoint)
+        self.toolbar.addAction(sep2)
+        self.toolbar.addAction(quitapp)
+        if platform.system() == "Darwin":
+            # On MAC
+            self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        elif platform.system() == 'Windows':
+            # On Windows
+            self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.toolbar.setIconSize(QtCore.QSize(36,36))
                 
         # Status bar
         self.statusBar().show()
