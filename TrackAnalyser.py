@@ -6,7 +6,7 @@
 """
 """
 TODO
-- Capire come mai la texture a votle viene caricata dal lato opposto della superficie e invertirla in automatico
+- Capire come mai la texture a volte viene caricata dal lato opposto della superficie e invertirla in automatico
 - Vedere se affinare lo smoothing dopo il filtro di Kalman o lasciar perdere ed eliminare il codice commentato
 """
 
@@ -818,11 +818,11 @@ class MainWindow(QMainWindow):
         try:
             self.use_proxy = self.settings.value('use_proxy', bool)
             self.proxy_config = self.settings.value('proxy_config', str)
-            print "Proxy setting loaded: {}, {}".format(self.use_proxy, self.proxy_config)
+            # print "Proxy setting loaded: {}, {}".format(self.use_proxy, self.proxy_config)
         except:
-            self.use_proxy = bombo.USE_PROXY
-            self.proxy_config = bombo.PROXY_DATA
-            print "Proxy setting not found, loading default: {}, {}".format(self.use_proxy, self.proxy_config)
+            self.use_proxy = bombo.DEFAULT_USE_PROXY
+            self.proxy_config = bombo.DEFAULT_PROXY_DATA
+            # print "Proxy setting not found, loading default: {}, {}".format(self.use_proxy, self.proxy_config)
         
         # Actions
         openfile = QAction(QtGui.QIcon("icons/openfile.png"), "Open .gpx", self)
