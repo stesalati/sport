@@ -386,13 +386,15 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     
     return new_coords, new_gpx, dinfos
 
-def PlotElevation(ax, measurements, state_means):
+def PlotElevation(ax, measurements, state_means, clean_before=True, color="#FFAAAA"):    
     # Compute distance
     distance = ComputeDistance(state_means)
-    # Clean and plot
-    ax.cla()
-    ax.plot(distance, measurements[:,2], color="#FFAAAA", linestyle="None", marker=".")
-    ax.plot(distance, state_means[:,2], color="#FF0000", linestyle="-", marker="None")
+    # Clean
+    if clean_before:
+        ax.cla()
+    # Plot
+    ax.plot(distance, measurements[:,2], color=color, alpha=0.3, linestyle="None", marker=".")
+    ax.plot(distance, state_means[:,2], color=color, linestyle="-", marker="None")
     # Style
     ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
     ax.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
@@ -400,9 +402,9 @@ def PlotElevation(ax, measurements, state_means):
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
     ax.grid(True)
     # Legend
-    l = ax.legend(['Measured', 'Estimated'])
-    ltext  = l.get_texts()
-    plt.setp(ltext, fontsize='small')
+    # l = ax.legend(['Measured', 'Estimated'])
+    # ltext  = l.get_texts()
+    # plt.setp(ltext, fontsize='small')
     return ax, (distance, measurements[:,2])
 
 def PlotElevationVariance(ax, state_means, state_vars):
@@ -410,8 +412,9 @@ def PlotElevationVariance(ax, state_means, state_vars):
     distance = ComputeDistance(state_means)
     # Compute variance
     variance_ele = state_vars[:,2,2]
-    # Clean and plot
+    # Clean
     ax.cla()
+    # Plot
     ax.plot(distance, variance_ele, color="#FF0000", linestyle="-", marker=".")
     # Style
     ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
@@ -451,7 +454,7 @@ def PlotCoordinatesVariance(ax, state_means, state_vars):
     ax.grid(True)    
     return ax, (distance, variance_coord)
 
-def PlotSpeed(ax, gpx_segment):   
+def PlotSpeed(ax, gpx_segment, clean_before=True, color="#FFAAAA"):
     # Compute speed and extract speed from gpx segment
     # (the speed is better this way, as it's computed in 3D and not only 2D, I think)
     coords = pd.DataFrame([
@@ -469,10 +472,12 @@ def PlotSpeed(ax, gpx_segment):
     distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
     distance = np.hstack(([0.], distance))
     
-    # Clean and plot
-    ax.cla()
+    # Clean
+    if clean_before:
+        ax.cla()
+    # Plot
     #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
-    ax.plot(distance, coords['speed']*3.6, color="r", linestyle="-", marker="None")
+    ax.plot(distance, coords['speed']*3.6, color=color, linestyle="-", marker="None")
     # Style
     ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
     ax.set_ylabel("Speed (km/h)", fontsize=PLOT_FONTSIZE)
@@ -480,10 +485,10 @@ def PlotSpeed(ax, gpx_segment):
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
     ax.grid(True)
     # Legend
-    #l = ax.legend(['Measured', 'Estimated'])
-    l = ax.legend(['Estimated'])
-    ltext  = l.get_texts()
-    plt.setp(ltext, fontsize='small')
+    # l = ax.legend(['Measured', 'Estimated'])
+    # l = ax.legend(['Estimated'])
+    # ltext  = l.get_texts()
+    # plt.setp(ltext, fontsize='small')
     return ax, (distance, coords['speed']*3.6)
 
 def PlotSpeedVariance(ax, state_means, state_vars):
@@ -1239,7 +1244,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
                         if not os.path.isfile(filename):
                             warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                             print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
-                            return None, None, warnings
+                            return None, None, None, None, None, None, None, warnings
                 if verbose:
                     print "A tile mosaic is required: this merge command will be run: {}".format(gdal_merge_command_list)
                 gm.main(gdal_merge_command_list)
@@ -1251,7 +1256,7 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
             if not os.path.isfile(filename):
                 warnings = warnings + "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
                 print "Error: Elevation profile for this location ({}) not found. It can be donwloaded here: {}.\n".format(tilename, TILES_DOWNLOAD_LINK)
-                return None, None, warnings
+                return None, None, None, None, None, None, None, warnings
                 
     else:
         # The tile name is provided (useful for those areas, e.g. Iceland, not covered by the SRTM survey)
@@ -1374,6 +1379,10 @@ def Generate3DMap(track_lat, track_lon,
                                                                                                                    margin=margin,
                                                                                                                    verbose=verbose)
     warnings = warnings + geotiff_warnings
+    
+    # Check if GeoTIFF data were generated correctly, otherwise just return 
+    if zone is None:
+        return None, None, warnings
     
     # Create figure
     #fig = mlab.figure(figure='3dmap', size=(500, 500))
