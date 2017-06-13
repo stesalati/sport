@@ -16,3 +16,5 @@ maps/srtm/*.tif
 maps/osm/texture.png
 
 *.py~
+
+setup.py
