@@ -90,6 +90,8 @@ COORDS_MAPPING_ZSCALE = 0.1
 DEFAULT_USE_PROXY = False
 DEFAULT_PROXY_DATA = 'salatis:Alzalarosa01@userproxy.tmg.local:8080'
 
+np.seterr(divide='ignore', invalid='ignore')
+
 #==============================================================================
 # Kalman processing functions
 #==============================================================================
@@ -340,8 +342,12 @@ def ComputeDistance(state_means):
     ddistance3d = np.sqrt(ddistance**2+delevation**2)
     distance3d = np.cumsum(ddistance3d)
     
-    #print "Total 2d distance: {}m, 3d distance: {}m".format(np.sum(ddistance), np.sum(ddistance3d))
-    return distance3d
+    dataout = {'ddistance': ddistance,
+               'delevation': delevation,
+               'ddistance3d': ddistance3d,
+               'distance3d': distance3d}
+    
+    return dataout
     
 def SaveDataToCoordsAndGPX(coords, state_means):
     # Saving to a new coords
@@ -396,17 +402,14 @@ def PlotElevation(ax, coords, measurements, state_means, base='space', clean_bef
         
     # Choose base
     if base == 'space':
-        base_data = ComputeDistance(state_means)
+        base_data = ComputeDistance(state_means)['distance3d']
     elif base == 'time':
-        print len(coords[['time_sec']].values)
-        print len(measurements[:,2])
-        print len(state_means[:,2])
         base_data = coords[['time_sec']].values / 60.0
         
     # Plot
     ax.plot(base_data, measurements[:,2], color=color, alpha=0.3, linestyle="None", marker=".")
     ax.plot(base_data, state_means[:,2], color=color, linestyle="-", marker="None")
-        
+    
     # Style
     if base == 'space':
         ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
@@ -425,9 +428,45 @@ def PlotElevation(ax, coords, measurements, state_means, base='space', clean_bef
     
     return ax, (base_data, measurements[:,2])
 
+def PlotGradient(ax, coords, measurements, state_means, base='space', clean_before=True, color="#FFAAAA"):    
+    # Clean
+    if clean_before:
+        ax.cla()
+        
+    # Choose base
+    if base == 'space':
+        base_data = ComputeDistance(state_means)['distance3d']
+    elif base == 'time':
+        base_data = coords[['time_sec']].values / 60.0
+                          
+    # Gradient
+    tmp = ComputeDistance(state_means)
+    gradient = tmp['delevation'] / tmp['ddistance'] * 100
+        
+    # Plot
+    ax.plot(base_data, gradient, color=color, linestyle="--", marker="None")
+    
+    # Style
+    if base == 'space':
+        ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    elif base == 'time':
+        ax.set_xlabel("Time (min)", fontsize=PLOT_FONTSIZE)
+    ax.set_ylabel("Gradient (%)", fontsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
+    ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
+    ax.minorticks_on()
+    ax.grid(True, color='white', which='both')
+    
+    # Legend
+    # l = ax.legend(['Measured', 'Estimated'])
+    # ltext  = l.get_texts()
+    # plt.setp(ltext, fontsize='small')
+    
+    return ax, (base_data, measurements[:,2])
+
 def PlotElevationVariance(ax, state_means, state_vars):
     # Compute distance
-    distance = ComputeDistance(state_means)
+    distance = ComputeDistance(state_means)['distance3d']
     # Compute variance
     variance_ele = state_vars[:,2,2]
     # Clean
@@ -444,7 +483,7 @@ def PlotElevationVariance(ax, state_means, state_vars):
 
 def PlotCoordinates(ax, state_means):
     # Compute distance
-    distance = ComputeDistance(state_means)
+    distance = ComputeDistance(state_means)['distance3d']
     # Clean and plot
     ax.cla()
     ax.plot(state_means[:,1], state_means[:,0], color="#FF0000", linestyle="-", marker=".")
@@ -458,7 +497,7 @@ def PlotCoordinates(ax, state_means):
 
 def PlotCoordinatesVariance(ax, state_means, state_vars):
     # Compute distance
-    distance = ComputeDistance(state_means)
+    distance = ComputeDistance(state_means)['distance3d']
     # Compute variance
     variance_coord = np.trace(state_vars[:,:2,:2], axis1=1, axis2=2)
     # Clean and plot
@@ -523,7 +562,7 @@ def PlotSpeed(ax, coords, gpx_segment, base='space', clean_before=True, color="#
 
 def PlotSpeedVariance(ax, state_means, state_vars):
     # Compute distance
-    distance = ComputeDistance(state_means)
+    distance = ComputeDistance(state_means)['distance3d']
     # Compute variance
     variance_speed = np.trace(state_vars[:,3:5,3:5], axis1=1, axis2=2)
     # Clean and plot
@@ -827,7 +866,7 @@ def GiveStats(segment):
 
 def GiveMyStats(state_means):
     dinfos = {}
-    dinfos['total_distance_my'] = "{:.3f}km".format(ComputeDistance(state_means)[-1]/1000.0)
+    dinfos['total_distance_my'] = "{:.3f}km".format(ComputeDistance(state_means)['distance3d'][-1]/1000.0)
     delevation = np.diff(np.asarray(state_means[:,2]))
     dinfos['climb_my'] = "+{:.0f}m, {:.0f}m\n".format(np.sum(delevation[np.where(delevation > 0)]), 
                                                       np.sum(delevation[np.where(delevation < 0)]))
