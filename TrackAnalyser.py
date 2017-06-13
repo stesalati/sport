@@ -151,6 +151,7 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100, base='space'):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.top_axis = self.fig.add_subplot(211)
+        # self.top_axis2 = self.top_axis.twinx()
         self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
         self.base = base
         
@@ -158,6 +159,7 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.fig.set_facecolor("k")
         self.fig.set_tight_layout(True)
         self.top_axis = DarkAxis(self.top_axis)
+        # self.top_axis2 = DarkAxis(self.top_axis2)
         self.bottom_axis = DarkAxis(self.bottom_axis)
         
         FigureCanvas.__init__(self, self.fig)
@@ -174,29 +176,14 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.top_axis.cla()
         self.bottom_axis.cla()
     
-    """
-    # It's not used anymore because "update_figure_multiple_tracks" is used all the times. I keep it here for reference, in particular for the cursor
-    def update_figure(self, measurements, state_means, segment):
-        # Draw plots
-        self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
-        self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, segment)
-        # Add cursor
-        def onclick(event):
+    def update_figure_multiple_tracks(self, coords_list, measurements_list, state_means_list, gpx_list, color_list):
+        
+        """
+        def onMove(event):
             cursor_anchored.mouse_move(event)
             self.draw()
-        if platform.system() == "Darwin":
-            # Cursor on both plots but not linked to the trace
-            self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='r', lw=1, vertOn=True, horizOn=True)
-        elif platform.system() == 'Windows':
-            cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
-                                                       self.bottom_axis, tmp_speed[0], tmp_speed[1])
-            self.mpl_connect('motion_notify_event', onclick)
-        # Draw
-        self.fig.set_tight_layout(True)
-        self.draw()
-    """
+        """
         
-    def update_figure_multiple_tracks(self, coords_list, measurements_list, state_means_list, gpx_list, color_list):
         # Draw plots
         for i, measurements in enumerate(measurements_list):
             coords = coords_list[i]
@@ -204,7 +191,20 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
             color = color_list[i]
             gpx = gpx_list[i]
             self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, coords, measurements, state_means, base=self.base, clean_before=False, color=color)
+            # self.top_axis2, tmp_gradient = bombo.PlotGradient(self.top_axis2, coords, measurements, state_means, base=self.base, clean_before=False, color=color)
+            # self.fig.sca(self.top_axis)
             self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, coords, gpx.tracks[0].segments[0], base=self.base, clean_before=False, color=color)
+
+        # Add cursor, on both plots but not linked to the traces
+        self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='w', lw=1, vertOn=True, horizOn=False)
+        
+        """
+        # Cursor on both plots linked to the trace
+        cursor_anchored = MultiCursorLinkedToTrace(self.top_axis, tmp_ele[0], tmp_ele[1],
+                                                   self.bottom_axis, tmp_speed[0], tmp_speed[1])
+        self.mpl_connect('motion_notify_event', onMove)
+        """
+        
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
@@ -258,23 +258,22 @@ class EmbeddedPlot_Details(FigureCanvas):
         self.axis_elevation_variance, tmp_elevar = bombo.PlotElevationVariance(self.axis_elevation_variance, state_means, state_vars)
         self.axis_speed_variance, tmp_speedvar = bombo.PlotSpeedVariance(self.axis_speed_variance, state_means, state_vars)
         
-        # Add cursor
+        # Add cursor, on both plots but not linked to the traces
+        self.multi = MultiCursor(self.fig.canvas,
+                                 (self.axis_elevation, self.axis_speed, self.axis_coords_variance, self.axis_elevation_variance, self.axis_speed_variance),
+                                 color='w', lw=1, vertOn=True, horizOn=False)
+        
         """
         def onclick(event):
             cursor_anchored2.mouse_move(event)
             cursor_anchored3.mouse_move(event)
             self.draw()
-        if platform.system() == "Darwin":
-            # Cursor on both plots but not linked to the trace
-            self.multi = MultiCursor(self.fig.canvas,
-                                     (self.axis_elevation, self.axis_speed, self.axis_coords_variance, self.axis_elevation_variance, self.axis_speed_variance),
-                                     color='r', lw=1, vertOn=True, horizOn=True)
-        elif platform.system() == 'Windows':
-            cursor_anchored2 = MultiCursorLinkedToTrace(self.axis_elevation, tmp_ele[0], tmp_ele[1],
-                                                        self.axis_elevation_variance, tmp_elevar[0], tmp_elevar[1])
-            cursor_anchored3 = MultiCursorLinkedToTrace(self.axis_speed, tmp_speed[0], tmp_speed[1],
-                                                        self.axis_speed_variance, tmp_speedvar[0], tmp_speedvar[1])
-            self.mpl_connect('motion_notify_event', onclick)
+
+        cursor_anchored2 = MultiCursorLinkedToTrace(self.axis_elevation, tmp_ele[0], tmp_ele[1],
+                                                    self.axis_elevation_variance, tmp_elevar[0], tmp_elevar[1])
+        cursor_anchored3 = MultiCursorLinkedToTrace(self.axis_speed, tmp_speed[0], tmp_speed[1],
+                                                    self.axis_speed_variance, tmp_speedvar[0], tmp_speedvar[1])
+        self.mpl_connect('motion_notify_event', onclick)
         """
             
         # Draw
@@ -477,7 +476,7 @@ class MainWindow(QMainWindow):
                                                                                                        gpx,
                                                                                                        method=self.comboBoxProcessingMethod.currentIndex(), 
                                                                                                        use_acceleration=self.checkUseAcceleration.isChecked(),
-                                                                                                       extra_smooth=self.checkExtraSmooth.isChecked(),
+                                                                                                       extra_smooth=False,
                                                                                                        debug_plot=False)
                 
                 # Save data in GPX structure to compute speed and elevations
@@ -949,10 +948,10 @@ class MainWindow(QMainWindow):
         hBoxProcessingMethod.addWidget(self.checkUseAcceleration)
         vBox2.addLayout(hBoxProcessingMethod)
         
-        # Use/don't use variance smooth
-        self.checkExtraSmooth = QCheckBox("Extra smooth")
-        self.checkExtraSmooth.setChecked(False)
-        vBox2.addWidget(self.checkExtraSmooth)
+        # Plot/don't plot gradient
+        self.showGradient = QCheckBox("Show gradient")
+        self.showGradient.setChecked(False)
+        vBox2.addWidget(self.showGradient)
         
         # 2D map settings
         line2DViewSettings = QFrame()
