@@ -148,10 +148,11 @@ def DarkAxis(axis):
     return axis
 
 class EmbeddedPlot_ElevationSpeed(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    def __init__(self, parent=None, width=5, height=4, dpi=100, base='space'):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.top_axis = self.fig.add_subplot(211)
         self.bottom_axis = self.fig.add_subplot(212, sharex=self.top_axis)
+        self.base = base
         
         # Format
         self.fig.set_facecolor("k")
@@ -172,7 +173,9 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
     def clear_figure(self):
         self.top_axis.cla()
         self.bottom_axis.cla()
-        
+    
+    """
+    # It's not used anymore because "update_figure_multiple_tracks" is used all the times. I keep it here for reference, in particular for the cursor
     def update_figure(self, measurements, state_means, segment):
         # Draw plots
         self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means)
@@ -191,15 +194,17 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
+    """
         
-    def update_figure_multiple_tracks(self, measurements_list, state_means_list, gpx_list, color_list):
+    def update_figure_multiple_tracks(self, coords_list, measurements_list, state_means_list, gpx_list, color_list):
         # Draw plots
         for i, measurements in enumerate(measurements_list):
+            coords = coords_list[i]
             state_means = state_means_list[i]
             color = color_list[i]
             gpx = gpx_list[i]
-            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, measurements, state_means, clean_before=False, color=color)
-            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, gpx.tracks[0].segments[0], clean_before=False, color=color)
+            self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, coords, measurements, state_means, base=self.base, clean_before=False, color=color)
+            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, coords, gpx.tracks[0].segments[0], base=self.base, clean_before=False, color=color)
         # Draw
         self.fig.set_tight_layout(True)
         self.draw()
@@ -244,11 +249,11 @@ class EmbeddedPlot_Details(FigureCanvas):
         self.axis_elevation_variance.cla()
         self.axis_speed_variance.cla()
         
-    def update_figure(self, measurements, state_means, state_vars, segment):
+    def update_figure(self, coords, measurements, state_means, state_vars, segment):
         # Draw plots
         self.axis_coords, tmp_coords = bombo.PlotCoordinates(self.axis_coords, state_means)
-        self.axis_elevation, tmp_ele = bombo.PlotElevation(self.axis_elevation, measurements, state_means)
-        self.axis_speed, tmp_speed = bombo.PlotSpeed(self.axis_speed, segment)
+        self.axis_elevation, tmp_ele = bombo.PlotElevation(self.axis_elevation, coords, measurements, state_means)
+        self.axis_speed, tmp_speed = bombo.PlotSpeed(self.axis_speed, coords, segment)
         self.axis_coords_variance, tmp_coordsvar = bombo.PlotCoordinatesVariance(self.axis_coords_variance, state_means, state_vars)
         self.axis_elevation_variance, tmp_elevar = bombo.PlotElevationVariance(self.axis_elevation_variance, state_means, state_vars)
         self.axis_speed_variance, tmp_speedvar = bombo.PlotSpeedVariance(self.axis_speed_variance, state_means, state_vars)
@@ -539,11 +544,23 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
                         
             # Generate embedded plots
-            self.plotEmbeddedElevationAndSpeed.clear_figure()
-            self.plotEmbeddedElevationAndSpeed.update_figure_multiple_tracks(self.proc_measurements, self.proc_state_means, self.proc_new_gpx, self.selectedpalette)
+            self.plotEmbeddedElevationAndSpeedSpaceBased.clear_figure()
+            self.plotEmbeddedElevationAndSpeedSpaceBased.update_figure_multiple_tracks(self.proc_coords,
+                                                                                       self.proc_measurements,
+                                                                                       self.proc_state_means,
+                                                                                       self.proc_new_gpx,
+                                                                                       self.selectedpalette)
+            
+            self.plotEmbeddedElevationAndSpeedTimeBased.clear_figure()
+            self.plotEmbeddedElevationAndSpeedTimeBased.update_figure_multiple_tracks(self.proc_coords,
+                                                                                      self.proc_measurements,
+                                                                                      self.proc_state_means,
+                                                                                      self.proc_new_gpx,
+                                                                                      self.selectedpalette)
+            
             self.plotEmbeddedDetails.clear_figure()
             if len(self.gpxselectedlist) == 1:
-                self.plotEmbeddedDetails.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+                self.plotEmbeddedDetails.update_figure(coords, measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
             
             # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
@@ -1062,21 +1079,37 @@ class MainWindow(QMainWindow):
         # Vertical right column
         self.tab = QTabWidget()
         
-        # Tab 1: Summary: elevation and speed
-        tab1 = QWidget()
+        # Tab 1 space: Summary: elevation and speed, space based
+        tab1space = QWidget()
         # The tab layout
         vBox_tab = QVBoxLayout()
         vBox_tab.setSpacing(5)
         # Plot area
-        self.plotEmbeddedElevationAndSpeed = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100)
-        self.plotEmbeddedElevationAndSpeed.setMinimumWidth(800)
+        self.plotEmbeddedElevationAndSpeedSpaceBased = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100, base='space')
+        self.plotEmbeddedElevationAndSpeedSpaceBased.setMinimumWidth(800)
         # Add toolbar to the plot
-        self.mpl_toolbar1 = NavigationToolbar(self.plotEmbeddedElevationAndSpeed, self.scatola)
+        self.mpl_toolbar1space = NavigationToolbar(self.plotEmbeddedElevationAndSpeedSpaceBased, self.scatola)
         # Add widgets to the layout
-        vBox_tab.addWidget(self.plotEmbeddedElevationAndSpeed)
-        vBox_tab.addWidget(self.mpl_toolbar1)
+        vBox_tab.addWidget(self.plotEmbeddedElevationAndSpeedSpaceBased)
+        vBox_tab.addWidget(self.mpl_toolbar1space)
         # Associate the layout to the tab
-        tab1.setLayout(vBox_tab)
+        tab1space.setLayout(vBox_tab)
+        
+        # Tab 1 time: Summary: elevation and speed, time based
+        tab1time = QWidget()
+        # The tab layout
+        vBox_tab = QVBoxLayout()
+        vBox_tab.setSpacing(5)
+        # Plot area
+        self.plotEmbeddedElevationAndSpeedTimeBased = EmbeddedPlot_ElevationSpeed(width=5, height=4, dpi=100, base='time')
+        self.plotEmbeddedElevationAndSpeedTimeBased.setMinimumWidth(800)
+        # Add toolbar to the plot
+        self.mpl_toolbar1time = NavigationToolbar(self.plotEmbeddedElevationAndSpeedTimeBased, self.scatola)
+        # Add widgets to the layout
+        vBox_tab.addWidget(self.plotEmbeddedElevationAndSpeedTimeBased)
+        vBox_tab.addWidget(self.mpl_toolbar1time)
+        # Associate the layout to the tab
+        tab1time.setLayout(vBox_tab)
         
         # Tab 2: html 2D map
         tab2 = QWidget()
@@ -1119,7 +1152,8 @@ class MainWindow(QMainWindow):
         tab4.setLayout(vBox_tab)
                 
         # Associate tabs
-        self.tab.addTab(tab1, "Summary")
+        self.tab.addTab(tab1space, "Summary, space based")
+        self.tab.addTab(tab1time, "Summary, time based")
         self.tab.addTab(tab2, "2D Map")
         self.tab.addTab(tab3, "3D Map")
         self.tab.addTab(tab4, "Details")
