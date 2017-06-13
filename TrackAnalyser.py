@@ -297,14 +297,14 @@ class MayaviQWidget(QWidget):
         self.ui.setParent(self)
     
     # I created this function to call the visualization.update_plot function, that is part of the Visualization class
-    def update_plot(self, terrain, track, use_osm_texture):
-        self.visualization.update_plot(terrain, track, use_osm_texture)
+    def update_plot(self, terrain, trace_list, use_osm_texture):
+        self.visualization.update_plot(terrain, trace_list, use_osm_texture)
         
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
 
     #@on_trait_change('scene.activated')
-    def update_plot(self, terrain, track, use_osm_texture=False):
+    def update_plot(self, terrain, trace_list, use_osm_texture=False):
         # This function is called when the view is opened. We don't
         # populate the scene when the view is not yet open, as some
         # VTK features require a GLContext.
@@ -329,29 +329,30 @@ class Visualization(HasTraits):
 			elevation_mesh.actor.tcoord_generator_mode = 'plane'
 			elevation_mesh.actor.actor.texture = texture
         
-        # Display path nodes
-        if len(track['x']) == 1:
-            track_line = self.scene.mlab.points3d(track['x'], track['y'], track['z'],
-                                                  color=track['color'], mode='sphere', scale_factor=track['line_radius']*10)
-        else:
-            track_line = self.scene.mlab.plot3d(track['x'], track['y'], track['z'],
-                                                color=track['color'], line_width=10.0, tube_radius=track['line_radius'])
+        for trace in trace_list:
+            # Display trace
+            if len(trace['x']) == 1:
+                trace_line = self.scene.mlab.points3d(trace['x'], trace['y'], trace['z'],
+                                                      color=trace['color'], mode='sphere', scale_factor=trace['line_radius']*10)
+            else:
+                trace_line = self.scene.mlab.plot3d(trace['x'], trace['y'], trace['z'],
+                                                    color=trace['color'], line_width=10.0, tube_radius=trace['line_radius'])
+                
+            # Display start test
+            if len(trace['x']) > 1:
+                start_label = self.scene.mlab.text3d(trace['x'][0],
+                                                     trace['y'][0],
+                                                     trace['z'][0] * 1.5,
+                                                     "START",
+                                                     scale=(trace['textsize'], trace['textsize'], trace['textsize']))
         
         # Display north text
         north_label = self.scene.mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
                                              terrain['y'][0][0],
                                              np.max(terrain['z']),
                                              "NORTH",
-                                             scale=(track['textsize'], track['textsize'], track['textsize']))
-        
-        # Displaying start test
-        if len(track['x']) > 1:
-            start_label = self.scene.mlab.text3d(track['x'][0],
-                                                 track['y'][0],
-                                                 track['z'][0] * 1.5,
-                                                 "START",
-                                                 scale=(track['textsize'], track['textsize'], track['textsize']))
-        
+                                             scale=(trace['textsize'], trace['textsize'], trace['textsize']))
+    
     # the layout of the dialog screated
     view = View(Item('scene',
                      editor=SceneEditor(scene_class=MayaviScene),
@@ -543,7 +544,6 @@ class MainWindow(QMainWindow):
             self.plotEmbeddedDetails.clear_figure()
             if len(self.gpxselectedlist) == 1:
                 self.plotEmbeddedDetails.update_figure(measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
-                
             
             # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
@@ -568,28 +568,28 @@ class MainWindow(QMainWindow):
                 
             # Generate 3D plot, only with one track for the moment and only if it's activated obviously
             if self.checkUse3DMap.isChecked():
-                if len(self.gpxselectedlist) == 1:
-                    if self.check3DMapSelection.isChecked():
-                        tile_selection = 'auto'
-                    else:
-                        tile_selection = self.text3DMapName.text()
-                    terrain, track, warnings = bombo.Generate3DMap(new_coords['lat'], new_coords['lon'],
-                                                                   tile_selection=tile_selection,
-                                                                   margin=self.spinbox3DMargin.value(),
-                                                                   elevation_scale=self.spinbox3DElevationScale.value(),
-                                                                   mapping='coords',
-                                                                   use_osm_texture=self.check3DUseOSM.isChecked(),
-                                                                   texture_type='osm',
-                                                                   texture_zoom=self.spinbox3DOSMZoom.value(),
-                                                                   texture_invert=self.check3DOSMInvert.isChecked(),
-                                                                   use_proxy=self.use_proxy,
-                                                                   proxy_data=self.proxy_config,
-                                                                   verbose=False)
-                    
-                    self.textWarningConsole.append(warnings)
-                    
-                    if terrain is not None:    
-                        self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
+                if self.check3DMapSelection.isChecked():
+                    tile_selection = 'auto'
+                else:
+                    tile_selection = self.text3DMapName.text()
+                terrain, trace_list, warnings = bombo.Generate3DMap(self.proc_new_coords,
+                                                                    self.selectedpalette,
+                                                                    tile_selection=tile_selection,
+                                                                    margin=self.spinbox3DMargin.value(),
+                                                                    elevation_scale=self.spinbox3DElevationScale.value(),
+                                                                    mapping='coords',
+                                                                    use_osm_texture=self.check3DUseOSM.isChecked(),
+                                                                    texture_type='osm',
+                                                                    texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                                    texture_invert=self.check3DOSMInvert.isChecked(),
+                                                                    use_proxy=self.use_proxy,
+                                                                    proxy_data=self.proxy_config,
+                                                                    verbose=False)
+                
+                self.textWarningConsole.append(warnings)
+                
+                if terrain is not None:    
+                    self.map3d.update_plot(terrain, trace_list, use_osm_texture=self.check3DUseOSM.isChecked())
             
         else:
             self.textWarningConsole.setText("You need to open a .gpx file before!")
@@ -615,23 +615,24 @@ class MainWindow(QMainWindow):
             else:
                 tile_selection = self.text3DMapName.text()
             
-            terrain, track, warnings = bombo.Generate3DMap([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
-                                                           tile_selection=tile_selection,
-                                                           margin=self.spinbox3DMargin.value(),
-                                                           elevation_scale=self.spinbox3DElevationScale.value(),
-                                                           mapping='coords',
-                                                           use_osm_texture=self.check3DUseOSM.isChecked(),
-                                                           texture_type='osm',
-                                                           texture_zoom=self.spinbox3DOSMZoom.value(),
-                                                           texture_invert=self.check3DOSMInvert.isChecked(),
-                                                           use_proxy=self.use_proxy,
-                                                           proxy_data=self.proxy_config,
-                                                           verbose=False)
+            terrain, trace_list, warnings = bombo.Generate3DMap([self.spinboxLatDec.value()], [self.spinboxLonDec.value()],
+                                                                self.selectedpalette,
+                                                                tile_selection=tile_selection,
+                                                                margin=self.spinbox3DMargin.value(),
+                                                                elevation_scale=self.spinbox3DElevationScale.value(),
+                                                                mapping='coords',
+                                                                use_osm_texture=self.check3DUseOSM.isChecked(),
+                                                                texture_type='osm',
+                                                                texture_zoom=self.spinbox3DOSMZoom.value(),
+                                                                texture_invert=self.check3DOSMInvert.isChecked(),
+                                                                use_proxy=self.use_proxy,
+                                                                proxy_data=self.proxy_config,
+                                                                verbose=False)
             
             self.textWarningConsole.append(warnings)
             
             if terrain is not None:    
-                self.map3d.update_plot(terrain, track, use_osm_texture=self.check3DUseOSM.isChecked())
+                self.map3d.update_plot(terrain, trace_list, use_osm_texture=self.check3DUseOSM.isChecked())
             d.done(0)
             
         def Convert():
