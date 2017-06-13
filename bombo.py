@@ -116,6 +116,10 @@ def ApplyKalmanFilter(coords, gpx, method, use_acceleration=False, extra_smooth=
         The resulting sampling time is constant
         """
         coords = coords.resample('1S').asfreq()
+        # Fill the time_sec column
+        for i in range(0,len(coords)):
+            coords['time_sec'][i] = (coords.index[i] - datetime.datetime(2000,1,1,0,0,0)).total_seconds()
+        coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
         # Create the "measurement" array and mask NaNs
         measurements = coords[['lat','lon','ele']].values
         dinfos['nsamples'] = "{} --> {} (+{:.0f}%)".format(len(orig_measurements), len(measurements), 100 * (float(len(measurements)) - float(len(orig_measurements))) / float(len(orig_measurements)) )
@@ -385,26 +389,41 @@ def SaveDataToCoordsAndGPX(coords, state_means):
     
     return new_coords, new_gpx, dinfos
 
-def PlotElevation(ax, measurements, state_means, clean_before=True, color="#FFAAAA"):    
-    # Compute distance
-    distance = ComputeDistance(state_means)
+def PlotElevation(ax, coords, measurements, state_means, base='space', clean_before=True, color="#FFAAAA"):    
     # Clean
     if clean_before:
         ax.cla()
+        
+    # Choose base
+    if base == 'space':
+        base_data = ComputeDistance(state_means)
+    elif base == 'time':
+        print len(coords[['time_sec']].values)
+        print len(measurements[:,2])
+        print len(state_means[:,2])
+        base_data = coords[['time_sec']].values / 60.0
+        
     # Plot
-    ax.plot(distance, measurements[:,2], color=color, alpha=0.3, linestyle="None", marker=".")
-    ax.plot(distance, state_means[:,2], color=color, linestyle="-", marker="None")
+    ax.plot(base_data, measurements[:,2], color=color, alpha=0.3, linestyle="None", marker=".")
+    ax.plot(base_data, state_means[:,2], color=color, linestyle="-", marker="None")
+        
     # Style
-    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    if base == 'space':
+        ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    elif base == 'time':
+        ax.set_xlabel("Time (min)", fontsize=PLOT_FONTSIZE)
     ax.set_ylabel("Elevation (m)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)
+    ax.minorticks_on()
+    ax.grid(True, color='white', which='both')
+    
     # Legend
     # l = ax.legend(['Measured', 'Estimated'])
     # ltext  = l.get_texts()
     # plt.setp(ltext, fontsize='small')
-    return ax, (distance, measurements[:,2])
+    
+    return ax, (base_data, measurements[:,2])
 
 def PlotElevationVariance(ax, state_means, state_vars):
     # Compute distance
@@ -420,7 +439,7 @@ def PlotElevationVariance(ax, state_means, state_vars):
     ax.set_ylabel("Variance (m)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)    
+    ax.grid(True, color='white')    
     return ax, (distance, variance_ele)
 
 def PlotCoordinates(ax, state_means):
@@ -434,7 +453,7 @@ def PlotCoordinates(ax, state_means):
     ax.set_ylabel("Latitude (deg)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)
+    ax.grid(True, color='white')
     return ax, (distance, state_means[:,0], state_means[:,1])
 
 def PlotCoordinatesVariance(ax, state_means, state_vars):
@@ -450,10 +469,15 @@ def PlotCoordinatesVariance(ax, state_means, state_vars):
     ax.set_ylabel("Variance (deg)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)    
+    ax.grid(True, color='white')    
     return ax, (distance, variance_coord)
 
-def PlotSpeed(ax, gpx_segment, clean_before=True, color="#FFAAAA"):
+def PlotSpeed(ax, coords, gpx_segment, base='space', clean_before=True, color="#FFAAAA"):
+    # Clean
+    if clean_before:
+        ax.cla()
+    
+    """
     # Compute speed and extract speed from gpx segment
     # (the speed is better this way, as it's computed in 3D and not only 2D, I think)
     coords = pd.DataFrame([
@@ -466,29 +490,36 @@ def PlotSpeed(ax, gpx_segment, clean_before=True, color="#FFAAAA"):
              'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(gpx_segment.points)])
     coords.set_index('time', drop = True, inplace = True)
     coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
-    
-    # Compute distance
-    distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
-    distance = np.hstack(([0.], distance))
-    
-    # Clean
-    if clean_before:
-        ax.cla()
+    """
+     
+    # Choose base
+    if base == 'space':
+        distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
+        base_data = np.hstack(([0.], distance))
+    elif base == 'time':
+        base_data = coords[['time_sec']].values / 60.0
+        
     # Plot
-    #ax.plot(distance, measurements[:,2], color="0.5", linestyle="None", marker=".")
-    ax.plot(distance, coords['speed']*3.6, color=color, linestyle="-", marker="None")
+    ax.plot(base_data, coords['speed']*3.6, color=color, linestyle="-", marker="None")
+    
     # Style
-    ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    if base == 'space':
+        ax.set_xlabel("Distance (m)", fontsize=PLOT_FONTSIZE)
+    elif base == 'time':
+        ax.set_xlabel("Time (min)", fontsize=PLOT_FONTSIZE)
     ax.set_ylabel("Speed (km/h)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)
+    ax.minorticks_on()
+    ax.grid(True, color='white', which='both')
+    
     # Legend
     # l = ax.legend(['Measured', 'Estimated'])
     # l = ax.legend(['Estimated'])
     # ltext  = l.get_texts()
     # plt.setp(ltext, fontsize='small')
-    return ax, (distance, coords['speed']*3.6)
+    
+    return ax, (base_data, coords['speed']*3.6)
 
 def PlotSpeedVariance(ax, state_means, state_vars):
     # Compute distance
@@ -503,7 +534,7 @@ def PlotSpeedVariance(ax, state_means, state_vars):
     ax.set_ylabel("Variance (deg/s)", fontsize=PLOT_FONTSIZE)
     ax.tick_params(axis='x', labelsize=PLOT_FONTSIZE)
     ax.tick_params(axis='y', labelsize=PLOT_FONTSIZE)
-    ax.grid(True)    
+    ax.grid(True, color='white')    
     return ax, (distance, variance_speed)
 
 
