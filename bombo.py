@@ -40,6 +40,7 @@ from tvtk.api import tvtk
 #from traits.api import HasTraits, Instance#, on_trait_change
 #from traitsui.api import View, Item
 #from mayavi.core.ui.api import MayaviScene, MlabSceneModel, SceneEditor
+import struct
 
 import StringIO
 import urllib2#, urllib
@@ -1311,7 +1312,8 @@ def GetGeoTIFFImageCluster(lat_min, lat_max, lon_min, lon_max, tile_selection='a
     return zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_ele, gt, warnings
     
 
-def Generate3DMap(track_lat, track_lon,
+def Generate3DMap(track_list,
+                  palette_list,
                   tile_selection='auto',
                   margin=100,
                   elevation_scale=1.0,
@@ -1339,9 +1341,9 @@ def Generate3DMap(track_lat, track_lon,
     px2deg = 0.0008333333333333334
     textsize = margin * 10
     warnings = ""
-    
+        
     # If track_lat and track_lon are None, run a demo
-    if len(track_lat) == 0 or len(track_lon) == 0:
+    if len(track_list) == 0:
         # startingpoint = (44.1938472, 10.7012833)    # Cimone
         # startingpoint = (46.5145639, 11.7398472)    # Rif. Demetz
         startingpoint = (-08.4113472, 116.4166667)    # Rinjani
@@ -1363,11 +1365,24 @@ def Generate3DMap(track_lat, track_lon,
         track_lat = [startingpoint[0]]
         track_lon = [startingpoint[1]]
         """
-        
+    
+    # Get absolute boundaries
+    lat_min = +90
+    lat_max = -90
+    lon_min = +180
+    lon_max = -180
+    for track in track_list:
+        lat_min = np.min([lat_min, np.min(track['lat']) - margin * px2deg])
+        lat_max = np.max([lat_max, np.max(track['lat']) + margin * px2deg])
+        lon_min = np.min([lon_min, np.min(track['lon']) - margin * px2deg])
+        lon_max = np.max([lon_max, np.max(track['lon']) + margin * px2deg])
+                
+    """
     lat_min = np.min(track_lat) - margin * px2deg
     lat_max = np.max(track_lat) + margin * px2deg
     lon_min = np.min(track_lon) - margin * px2deg
     lon_max = np.max(track_lon) + margin * px2deg
+    """
     
     # Get GeoTIFF elevation data
     zone, line_x_deg, array_x_deg, line_y_deg, array_y_deg, array_z, gt, geotiff_warnings = GetGeoTIFFImageCluster(lat_min=lat_min,
@@ -1487,53 +1502,72 @@ def Generate3DMap(track_lat, track_lon,
             # Save the texture as a PNG
             img = np.asarray(a_trimmed)
             scipy.misc.imsave(TEXTURE_FILE, img)
+    
+    """
+    track_lat = track_list[0]['lat']
+    track_lon = track_list[0]['lon']
+    """
+    
+    # Traces
+    trace_list = list()
+    for itrack, track in enumerate(track_list):
         
-    # Track
-    track_x_m = list()
-    track_y_m = list()
-    track_z_m = list()
-    track_x_deg = list()
-    track_y_deg = list()
-    track_z_deg = list()
-    for i in range(np.size(track_lat, axis=0)):
-        (x,y) = degrees2meters(track_lon[i], track_lat[i])
-        track_x_m.append(x)
-        track_y_m.append(y)
-        track_x_deg.append(track_lon[i] * COORDS_MAPPING_SCALE)
-        track_y_deg.append(track_lat[i] * COORDS_MAPPING_SCALE)
-        zz = array_z[int(np.round((track_lon[i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(np.round((track_lat[i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
-        track_z_m.append(zz * elevation_scale)
-        track_z_deg.append(zz * COORDS_MAPPING_ZSCALE * elevation_scale)
-       
-    # Creating the export dictionaries
+        # Computing the trace based on the track provided
+        trace_x_m = list()
+        trace_y_m = list()
+        trace_z_m = list()
+        trace_x_deg = list()
+        trace_y_deg = list()
+        trace_z_deg = list()
+        for i in range(np.size(track['lat'], axis=0)):
+            (x,y) = degrees2meters(track['lon'][i], track['lat'][i])
+            trace_x_m.append(x)
+            trace_y_m.append(y)
+            trace_x_deg.append(track['lon'][i] * COORDS_MAPPING_SCALE)
+            trace_y_deg.append(track['lat'][i] * COORDS_MAPPING_SCALE)
+            zz = array_z[int(np.round((track['lon'][i] - (gt[0]+zone['x_min']*gt[1])) / gt[1])), int(np.round((track['lat'][i] - (gt[3]+zone['y_min']*gt[5])) / gt[5]))]
+            trace_z_m.append(zz * elevation_scale)
+            trace_z_deg.append(zz * COORDS_MAPPING_ZSCALE * elevation_scale)
+            
+        # Creating trace export dictionary
+        if mapping == 'meters':
+            trace = {'x': trace_x_m,
+                     'y': trace_y_m,
+                     'z': trace_z_m,
+                     # 'color': (255.0/255.0, 102.0/255.0, 0),
+                     'color': ConvertRGBStringToTuple(palette_list[itrack]),
+                     'line_width': 10.0,
+                     'line_radius': TRACE_SIZE_ON_3DMAP,
+                     'textsize': textsize}
+            
+        if mapping == 'coords':
+            trace = {'x': trace_x_deg,
+                     'y': trace_y_deg,
+                     'z': trace_z_deg,
+                     # 'color': (255.0/255.0, 102.0/255.0, 0),
+                     'color': ConvertRGBStringToTuple(palette_list[itrack]),
+                     'line_width': 10.0,
+                     'line_radius': TRACE_SIZE_ON_3DMAP / 20,
+                     'textsize': textsize / 20}
+            
+        # Add the trace to the trace list
+        trace_list.append(trace)
+    
+    # Creating terrain export dictionary
     if mapping == 'meters':
         terrain = {'x': array_x_m, 
                    'y': array_y_m,
                    'z': array_z * elevation_scale}
-        track = {'x': track_x_m,
-                 'y': track_y_m,
-                 'z': track_z_m,
-                 'color': (255.0/255.0, 102.0/255.0, 0),
-                 'line_width': 10.0,
-                 'line_radius': TRACE_SIZE_ON_3DMAP,
-                 'textsize': textsize}
         
     if mapping == 'coords':
         terrain = {'x': array_x_deg * COORDS_MAPPING_SCALE, 
                    'y': array_y_deg * COORDS_MAPPING_SCALE,
                    'z': array_z * elevation_scale * COORDS_MAPPING_ZSCALE}
-        track = {'x': track_x_deg,
-                 'y': track_y_deg,
-                 'z': track_z_deg,
-                 'color': (255.0/255.0, 102.0/255.0, 0),
-                 'line_width': 10.0,
-                 'line_radius': TRACE_SIZE_ON_3DMAP / 20,
-                 'textsize': textsize / 20}
         
-    return terrain, track, warnings
+    return terrain, trace_list, warnings
 
 
-def Plot3DMap(terrain, track, use_osm_texture, animated=False):
+def Plot3DMap(terrain, trace_list, use_osm_texture, animated=False):
     fig = mlab.figure(figure='3D Map', size=(500, 500))
     
     # Plot the elevation mesh
@@ -1550,33 +1584,38 @@ def Plot3DMap(terrain, track, use_osm_texture, animated=False):
         elevation_mesh.actor.enable_texture = True
         elevation_mesh.actor.tcoord_generator_mode = 'plane'
         elevation_mesh.actor.actor.texture = texture
-    
-    # Display path nodes
-    if len(track['x']) == 1:
-        track_line = mlab.points3d(track['x'], track['y'], track['z'],
-                                   figure=fig,
-                                   color=track['color'], mode='sphere', scale_factor=track['line_radius']*10)
-    else:
-        track_line = mlab.plot3d(track['x'], track['y'], track['z'],
-                                 figure=fig,
-                                 color=track['color'], line_width=10.0, tube_radius=track['line_radius'])
-    
+        
+        trace_line_list = list()
+        start_label_list = list()
+        for trace in trace_list:
+            # Display trace
+            if len(trace['x']) == 1:
+                trace_line = mlab.points3d(trace['x'], trace['y'], trace['z'],
+                                           figure=fig,
+                                           color=trace['color'], mode='sphere', scale_factor=trace['line_radius']*10)
+            else:
+                trace_line = mlab.plot3d(trace['x'], trace['y'], trace['z'],
+                                         figure=fig,
+                                         color=trace['color'], line_width=10.0, tube_radius=trace['line_radius'])
+            trace_line_list.append(trace_line)
+            
+            # Display start test
+            if len(trace['x']) > 1:
+                start_label = mlab.text3d(trace['x'][0],
+                                          trace['y'][0],
+                                          trace['z'][0] * 1.5,
+                                          "START",
+                                          figure=fig,
+                                          scale=(trace['textsize'], trace['textsize'], trace['textsize']))
+                start_label_list.append(start_label)
+                
     # Display north text
     north_label = mlab.text3d((terrain['x'][0][0] + terrain['x'][-1][0]) / 2,
                               terrain['y'][0][0],
                               np.max(terrain['z']),
                               "NORTH",
                               figure=fig,
-                              scale=(track['textsize'], track['textsize'], track['textsize']))
-    
-    # Displaying start test
-    if len(track['x']) > 1:
-        start_label = mlab.text3d(track['x'][0],
-                                  track['y'][0],
-                                  track['z'][0] * 1.5,
-                                  "START",
-                                  figure=fig,
-                                  scale=(track['textsize'], track['textsize'], track['textsize']))
+                              scale=(trace['textsize'], trace['textsize'], trace['textsize']))
     
     # Set camera position
     mlab.view(azimuth=-90.0,
@@ -1607,13 +1646,19 @@ def Plot3DMap(terrain, track, use_osm_texture, animated=False):
     # Returning generated elements for future use
     map_elements = {'figure': fig,
                     'elevation_mesh': elevation_mesh,
-                    'track_line': track_line,
-                    'north_label': north_label,
-                    'start_label': start_label}
+                    'trace_line_list': trace_line_list,
+                    'start_label_list': start_label_list,
+                    'north_label': north_label}
     
     return map_elements
 
 
+def ConvertRGBStringToTuple(s):
+    s = s[1:]
+    rgb = struct.unpack('BBB',s.decode('hex'))
+    return tuple(float(c)/255 for c in rgb)
+
+   
 """
 Homemade processing
 if False:
