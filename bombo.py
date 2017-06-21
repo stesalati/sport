@@ -49,6 +49,11 @@ import urllib2#, urllib
 #from pylab import imshow, imread, show
 import scipy.misc
 
+# Bokeh
+from bokeh.io import gridplot
+from bokeh.plotting import figure, output_file, show
+from bokeh.models import ColumnDataSource, Circle, HoverTool, CustomJS, Text
+
 import gdal_merge as gm
 
 """
@@ -80,6 +85,7 @@ KALMAN_N_ITERATIONS = 5
 TRACKS_FOLDER = "tracks/"
 MAP_2D_FILENAME = "osm.html"
 OSM_DATA_FOLDER = "maps/osm/"
+BOKEH_PLOT_FILENAME = "bokeh.html"
 TEXTURE_FILE = OSM_DATA_FOLDER + 'texture.png'
 ELEVATION_DATA_FOLDER = "maps/srtm/"
 TILES_DOWNLOAD_LINK = "http://dwtkns.com/srtm/"
@@ -511,26 +517,11 @@ def PlotCoordinatesVariance(ax, state_means, state_vars):
     ax.grid(True, color='white')    
     return ax, (distance, variance_coord)
 
-def PlotSpeed(ax, coords, gpx_segment, base='space', clean_before=True, color="#FFAAAA"):
+def PlotSpeed(ax, coords, base='space', clean_before=True, color="#FFAAAA"):
     # Clean
     if clean_before:
         ax.cla()
     
-    """
-    # Compute speed and extract speed from gpx segment
-    # (the speed is better this way, as it's computed in 3D and not only 2D, I think)
-    coords = pd.DataFrame([
-            {'idx': i,
-             'lat': p.latitude,
-             'lon': p.longitude,
-             'ele': p.elevation,
-             'speed': p.speed,
-             'time': p.time,
-             'time_sec': (p.time - datetime.datetime(2000,1,1,0,0,0)).total_seconds()} for i, p in enumerate(gpx_segment.points)])
-    coords.set_index('time', drop = True, inplace = True)
-    coords['time_sec'] = coords['time_sec'] - coords['time_sec'][0]
-    """
-     
     # Choose base
     if base == 'space':
         distance = np.cumsum(HaversineDistance(np.asarray(coords['lat']), np.asarray(coords['lon'])))
@@ -1728,7 +1719,83 @@ def ConvertRGBStringToTuple(s):
     rgb = struct.unpack('BBB',s.decode('hex'))
     return tuple(float(c)/255 for c in rgb)
 
-   
+
+def PlotWithBokeh(coords_list, measurements_list, state_means_list, color_list, base='space', clean_before=True):
+    """
+    https://stackoverflow.com/questions/35983029/bokeh-synchronizing-hover-tooltips-in-linked-plots
+    http://bokeh.pydata.org/en/0.10.0/docs/user_guide/interaction.html
+    http://bokeh.pydata.org/en/latest/docs/user_guide/tools.html
+    """
+    
+    output_file(BOKEH_PLOT_FILENAME)    
+    TOOLS = "box_select,lasso_select"
+    
+    
+    """
+    # create a new plot and add a renderer
+    left = figure(tools=TOOLS, plot_width=300, plot_height=300, title=None)
+    left.circle('x', 'y0', source=source)
+    
+    # create another new plot and add a renderer
+    right = figure(tools=TOOLS, plot_width=300, plot_height=300, title=None)
+    right.circle('x', 'y1', source=source)
+    """
+    
+    for i, measurements in enumerate(measurements_list):
+        coords = coords_list[i]
+        state_means = state_means_list[i]
+        color = color_list[i]
+        
+        (time, distance, lat, lon, ele, speed) = (coords[['time_sec']].values / 60.0), ComputeDistance(state_means)['distance3d'], state_means[:,0], state_means[:,1], state_means[:,2], (coords['speed']*3.6)
+        
+        """
+        print len(time)
+        print len(distance)
+        print len(lat)
+        print len(lon)
+        print len(ele)
+        print len(speed)
+        """
+        
+        source = ColumnDataSource({'time': time,
+                                   'distance': distance,
+                                   'lat': lat, 
+                                   'lon': lon,
+                                   'ele': ele,
+                                   'speed': speed,
+                                   'txt': ['('+str(lat[i])+', '+str(lon[i])+')' for i in range(len(time))],
+                                   'txt2': ['Time: ' + str(time[i]) + 'Distance: ' + str(distance[i]) + '\nElevation: ' + str(ele[i]) + '\nSpeed=' + str(speed[i]) for i in range(len(time))]})
+        
+        plot_map = figure(tools=TOOLS, width=500, height=500, title='Map', x_axis_label='Lon', y_axis_label='Lat')
+        # plot_map.scatter(lon, lat)
+        plot_map.scatter('lon', 'lat', source=source)
+        plot_dist_ele = figure(tools=TOOLS, width=500, height=500, title='Elevation', x_axis_label='Distance', y_axis_label='Elevation')
+        # plot_dist_ele.scatter(distance, ele)
+        plot_dist_ele.scatter('distance', 'ele', source=source)
+    
+    invisible_circle = Circle(x='lon', y='lat', fill_color='gray', fill_alpha=0.0, line_color=None, size=10) # size determines how big the hover area will be
+    invisible_circle2 = Circle(x='distance', y='ele', fill_color='gray', fill_alpha=0.0, line_color=None, size=10)
+    
+    invisible_text = Text(x='lon', y='lat', text='txt', text_color='black', text_alpha=0.0)
+    visible_text = Text(x='lon', y='lat', text='txt', text_color='black', text_alpha=0.5)
+    
+    invisible_text2 = Text(x='distance', y='ele', text='txt2', text_color='black', text_alpha=0.0)
+    visible_text2 = Text(x='distance', y='ele', text='txt2', text_color='black', text_alpha=0.5)
+    
+    cr = plot_map.add_glyph(source, invisible_circle, selection_glyph=invisible_circle, nonselection_glyph=invisible_circle)
+    crt = plot_map.add_glyph(source, invisible_text, selection_glyph=visible_text, nonselection_glyph=invisible_text)
+    cr2 = plot_dist_ele.add_glyph(source, invisible_circle2, selection_glyph=invisible_circle2, nonselection_glyph=invisible_circle2)
+    cr2t = plot_dist_ele.add_glyph(source, invisible_text2, selection_glyph=visible_text2, nonselection_glyph=invisible_text2)
+    
+    code = "source.set('selected', cb_data['index']);"
+    callback = CustomJS(args={'source': source}, code=code)
+    plot_map.add_tools(HoverTool(tooltips=None, callback=callback, renderers=[cr, crt]))
+    plot_dist_ele.add_tools(HoverTool(tooltips=None, callback=callback, renderers=[cr2, cr2t]))
+    
+    layout = gridplot([[plot_map, plot_dist_ele]])
+    show(layout)
+    
+    
 """
 Homemade processing
 if False:
