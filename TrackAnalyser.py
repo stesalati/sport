@@ -176,7 +176,7 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
         self.top_axis.cla()
         self.bottom_axis.cla()
     
-    def update_figure_multiple_tracks(self, coords_list, measurements_list, state_means_list, gpx_list, color_list):
+    def update_figure_multiple_tracks(self, coords_list, measurements_list, state_means_list, color_list):
         
         """
         def onMove(event):
@@ -189,11 +189,10 @@ class EmbeddedPlot_ElevationSpeed(FigureCanvas):
             coords = coords_list[i]
             state_means = state_means_list[i]
             color = color_list[i]
-            gpx = gpx_list[i]
             self.top_axis, tmp_ele = bombo.PlotElevation(self.top_axis, coords, measurements, state_means, base=self.base, clean_before=False, color=color)
             # self.top_axis2, tmp_gradient = bombo.PlotGradient(self.top_axis2, coords, measurements, state_means, base=self.base, clean_before=False, color=color)
             # self.fig.sca(self.top_axis)
-            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, coords, gpx.tracks[0].segments[0], base=self.base, clean_before=False, color=color)
+            self.bottom_axis, tmp_speed = bombo.PlotSpeed(self.bottom_axis, coords, base=self.base, clean_before=False, color=color)
 
         # Add cursor, on both plots but not linked to the traces
         self.multi = MultiCursor(self.fig.canvas, (self.top_axis, self.bottom_axis), color='w', lw=1, vertOn=True, horizOn=False)
@@ -249,11 +248,11 @@ class EmbeddedPlot_Details(FigureCanvas):
         self.axis_elevation_variance.cla()
         self.axis_speed_variance.cla()
         
-    def update_figure(self, coords, measurements, state_means, state_vars, segment):
+    def update_figure(self, coords, measurements, state_means, state_vars):
         # Draw plots
         self.axis_coords, tmp_coords = bombo.PlotCoordinates(self.axis_coords, state_means)
         self.axis_elevation, tmp_ele = bombo.PlotElevation(self.axis_elevation, coords, measurements, state_means)
-        self.axis_speed, tmp_speed = bombo.PlotSpeed(self.axis_speed, coords, segment)
+        self.axis_speed, tmp_speed = bombo.PlotSpeed(self.axis_speed, coords)
         self.axis_coords_variance, tmp_coordsvar = bombo.PlotCoordinatesVariance(self.axis_coords_variance, state_means, state_vars)
         self.axis_elevation_variance, tmp_elevar = bombo.PlotElevationVariance(self.axis_elevation_variance, state_means, state_vars)
         self.axis_speed_variance, tmp_speedvar = bombo.PlotSpeedVariance(self.axis_speed_variance, state_means, state_vars)
@@ -547,19 +546,24 @@ class MainWindow(QMainWindow):
             self.plotEmbeddedElevationAndSpeedSpaceBased.update_figure_multiple_tracks(self.proc_coords,
                                                                                        self.proc_measurements,
                                                                                        self.proc_state_means,
-                                                                                       self.proc_new_gpx,
                                                                                        self.selectedpalette)
             
             self.plotEmbeddedElevationAndSpeedTimeBased.clear_figure()
             self.plotEmbeddedElevationAndSpeedTimeBased.update_figure_multiple_tracks(self.proc_coords,
                                                                                       self.proc_measurements,
                                                                                       self.proc_state_means,
-                                                                                      self.proc_new_gpx,
                                                                                       self.selectedpalette)
             
             self.plotEmbeddedDetails.clear_figure()
             if len(self.gpxselectedlist) == 1:
-                self.plotEmbeddedDetails.update_figure(coords, measurements, state_means, state_vars, new_gpx.tracks[0].segments[0])
+                self.plotEmbeddedDetails.update_figure(coords, measurements, state_means, state_vars)
+                
+            # Generate Bokeh plot
+            bombo.PlotWithBokeh(self.proc_coords,
+                                self.proc_measurements,
+                                self.proc_state_means,
+                                self.selectedpalette,
+                                base='space', clean_before=True)
             
             # Generate html plot, if only one track is selected, proceed with the complete output, otherwise just plot the traces
             if len(self.gpxselectedlist) is 1:
